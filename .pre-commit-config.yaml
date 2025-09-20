@@ -1,0 +1,69 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-ast
+      - id: check-builtin-literals
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-vcs-permalinks
+      - id: check-xml
+      - id: check-yaml
+      - id: debug-statements
+      - id: destroyed-symlinks
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+
+
+  - repo: local
+    hooks:
+      - id: security-bandit
+        name: Security Check (Bandit)
+        entry: make security
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: lint-ruff
+        name: Lint and Format Check (Ruff)
+        entry: make lint
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: type-mypy
+        name: Type Check (MyPy)
+        entry: make typecheck
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: unit-test
+        name: Unit Tests (PyTest)
+        entry: make test
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.8.3
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.7.19
+    hooks:
+      - id: uv-lock

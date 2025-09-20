@@ -1,0 +1,220 @@
+name: 🐛 Bug Report
+description: Create a report to help us reproduce and fix the issue
+title: "[BUG]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thank you for contributing to hypervigilant!
+
+        Before submitting a bug report, please:
+        - 🔍 **Search existing issues** to avoid duplicates: [View Issues](https://github.com/hypervigilant/hypervigilant/issues)
+        - 📖 **Check the documentation**: [hypervigilant Docs](https://hypervigilant.readthedocs.io)
+        - 💬 **For feature requests or questions**, please use [Discussions](https://github.com/hypervigilant/hypervigilant/discussions)
+        - 🔐 **For security vulnerabilities**, please email security@hypervigilant.org instead
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Issue Priority
+      description: Please assess the impact of this issue
+      options:
+        - "🔴 Critical - Production/data loss issue"
+        - "🟠 High - Significant functionality broken"
+        - "🟡 Medium - Important feature impaired"
+        - "🟢 Low - Minor issue or cosmetic"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-module
+    attributes:
+      label: Affected Component
+      description: Which hypervigilant component is experiencing the issue?
+      multiple: true
+      options:
+        - Core adapters
+        - Completion module
+        - Type system
+        - Configuration system
+        - Build/Tooling
+        - Documentation
+        - Performance
+        - Other/Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue Description
+      description: Provide a clear and concise description of the issue
+      placeholder: |
+        A clear description of what the bug is. Include:
+        - What you were trying to accomplish
+        - What actually happened
+        - Any error messages you encountered
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproduction
+      description: Provide a minimal code example that reproduces the issue
+      placeholder: |
+        ```python
+        # Minimal code to reproduce the issue
+        from hypervigilant import SomeModule
+
+        # Your reproduction code here
+        result = SomeModule.method()
+
+        # What happens vs what you expected
+        ```
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Clear steps to reproduce the behavior
+      placeholder: |
+        1. Install hypervigilant with '...'
+        2. Create a file with '...'
+        3. Run the command '...'
+        4. See error
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe what should happen when the code runs correctly
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include full error messages and stack traces
+      placeholder: |
+        Include the complete error output, including:
+        - Full stack trace
+        - Error messages
+        - Any warning messages
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information
+      description: |
+        Run this command in your project root and paste the output:
+        ```bash
+        python -c "import sys; import hypervigilant; print(f'Python: {sys.version}\nhypervigilant: {hypervigilant.__version__}')"
+        ```
+      placeholder: |
+        Python: 3.12.0
+        hypervigilant: 11.0.0
+        OS: macOS 14.0
+        Additional relevant packages...
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: hypervigilant-version
+    attributes:
+      label: hypervigilant Version
+      description: Which version of hypervigilant are you using?
+      placeholder: "11.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: regression
+    attributes:
+      label: Regression Information
+      description: If this worked before, what was the last working version?
+      placeholder: "10.9.0 (optional)"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: python-version
+    attributes:
+      label: Python Version
+      options:
+        - "3.13"
+        - "3.12"
+        - "3.11"
+        - "3.10"
+        - "Other (specify in additional context)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - "macOS"
+        - "Linux"
+        - "Windows"
+        - "Docker/Container"
+        - "CI Environment (GitHub Actions, etc.)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: |
+        Add any other context about the problem here. This might include:
+        - Configuration files
+        - Related issues or PRs
+        - Workarounds you've tried
+        - Screenshots (if applicable)
+        - Performance metrics or logs
+      placeholder: Any additional information that might help us diagnose and fix the issue
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following before submitting
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I have provided a minimal reproduction example
+          required: true
+        - label: I have included all error messages and stack traces
+          required: true
+        - label: I have tested with the latest version of hypervigilant
+          required: false
+        - label: I am willing to contribute a fix for this issue
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Thank you for taking the time to report this issue! 🙏**
+
+        Your contribution helps make hypervigilant better for everyone. A maintainer will review your issue shortly.

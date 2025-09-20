@@ -1,0 +1,14 @@
+[run]
+source =
+    hypervigilant/
+
+omit =
+    */__init__.py
+    */tests/*
+
+[report]
+fail_under = 80
+show_missing = True
+
+[html]
+directory = coverage_html_report

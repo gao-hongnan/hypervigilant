@@ -1,0 +1,145 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hypervigilant"
+version = "14.0.0"
+description = "A collection of code for hypervigilant - wrapper for instrumentation."
+authors = [{name="GAO Hongnan", email="hongnangao@gmail.com"}]
+maintainers = [{name="GAO Hongnan", email="hongnangao@gmail.com"}]
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.11.7",
+    "pydantic-settings>=2.10.1",
+]
+
+[project.optional-dependencies]
+playground = [
+    "pydanticonf>=1.0.0",
+]
+
+[dependency-groups]
+lint = [
+    "bandit>=1.8.6",
+    "commitizen>=4.8.3",
+    "pre-commit>=4.3.0",
+    "ruff>=0.12.11",
+]
+
+type = [
+    "mypy>=1.17.1",
+    "pyright>=1.1.405",
+    "typeguard>=4.4.4",
+    "types-pyyaml>=6.0.12.20250516",
+    "types-psutil>=7.0.0.20250822",
+]
+
+test = [
+    "coverage>=7.10.6",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-mock>=3.14.1",
+    "pytest-xdist>=3.6.1",
+    "pytest-cov>=6.0.0",
+]
+
+docs = [
+    "jupyter-book==1.0.4.post1",
+    "myst-nb",
+    "sphinx-copybutton",
+    "sphinxcontrib-mermaid",
+    "sphinx-proof",
+    "sphinxcontrib-bibtex",
+    "sphinx-togglebutton",
+    "sphinx-design",
+]
+
+dev = [
+    { include-group = "lint" },
+    { include-group = "type" },
+    { include-group = "test" },
+    { include-group = "docs" },
+]
+
+[project.urls]
+Homepage = "https://github.com/gao-hongnan/hypervigilant"
+Documentation = "https://github.com/gao-hongnan/hypervigilant/tree/main/playbook"
+Repository = "https://github.com/gao-hongnan/hypervigilant"
+Issues = "https://github.com/gao-hongnan/hypervigilant/issues"
+Changelog = "https://github.com/gao-hongnan/hypervigilant/releases"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hypervigilant"]
+exclude = [
+    "tests/",
+    "docs/",
+    "playbook/",
+    "playground/",
+    "examples/",
+    "scripts/",
+    "*.pyc",
+    "__pycache__/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".coverage",
+    "htmlcov/",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "tests/",
+    "docs/",
+    "playbook/",
+    "playground/",
+    "examples/",
+    "scripts/",
+    "*.pyc",
+    "__pycache__/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".git/",
+    ".github/",
+    ".venv/",
+    "dist/",
+    "build/",
+    ".coverage",
+    "htmlcov/",
+    ".DS_Store",
+]
+
+[tool.uv]
+managed = true
+
+[tool.bandit]
+exclude_dirs = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    "venv_*",
+    "venv",
+    ".venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+]

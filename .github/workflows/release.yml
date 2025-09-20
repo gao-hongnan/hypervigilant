@@ -1,0 +1,24 @@
+name: RELEASE
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  pypi:
+    name: Publish to PyPI
+    needs: ci
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - run: uv publish --trusted-publishing always

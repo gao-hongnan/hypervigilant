@@ -1,0 +1,163 @@
+name: 📝 Documentation Update
+description: Report issues or suggest improvements for documentation
+title: "[DOCS]: "
+labels: ["documentation", "good first issue"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Help us improve hypervigilant documentation!
+
+        Good documentation is crucial for our community. Thank you for taking the time to help improve it.
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What kind of documentation issue is this?
+      options:
+        - "🐛 Error/Bug - Incorrect information"
+        - "❓ Missing - Documentation doesn't exist"
+        - "😕 Unclear - Hard to understand"
+        - "📚 Enhancement - Could be improved"
+        - "💡 Example - Need more/better examples"
+        - "🔗 Links - Broken or outdated links"
+        - "📖 Tutorial - Need step-by-step guide"
+        - "🎯 API Reference - API documentation issue"
+    validations:
+      required: true
+
+  - type: input
+    id: doc-location
+    attributes:
+      label: Documentation Location
+      description: Where in the documentation is this issue? (URL or file path)
+      placeholder: "https://github.com/gao-hongnan/hypervigilant/tree/main/playbook/..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: current-content
+    attributes:
+      label: Current Documentation
+      description: What does the documentation currently say? (if applicable)
+      placeholder: |
+        Quote or describe the current documentation that needs improvement.
+        Include links to specific sections if possible.
+
+  - type: textarea
+    id: issue-description
+    attributes:
+      label: Issue Description
+      description: What's wrong or missing in the documentation?
+      placeholder: |
+        Describe the documentation issue:
+        - What information is incorrect or missing?
+        - What is confusing or unclear?
+        - What could be explained better?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-improvement
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be updated?
+      placeholder: |
+        Provide your suggested changes:
+        - Corrected information
+        - Additional explanations
+        - New examples
+        - Better structure or organization
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: code-examples
+    attributes:
+      label: Code Examples
+      description: If suggesting new examples, provide them here
+      placeholder: |
+        ```python
+        # Example code that should be in the documentation
+        from hypervigilant import SomeModule
+
+        # Clear example showing proper usage
+        result = SomeModule.method()
+        ```
+      render: python
+
+  - type: dropdown
+    id: affected-users
+    attributes:
+      label: Who does this affect?
+      description: Which users would benefit from this documentation update?
+      multiple: true
+      options:
+        - "🆕 New users - Getting started"
+        - "👨‍💻 Developers - Using the library"
+        - "🔧 Contributors - Contributing to the project"
+        - "🏗️ Maintainers - Project maintenance"
+        - "🎓 Advanced users - Complex features"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this documentation update?
+      options:
+        - "🔴 Critical - Prevents usage/causes errors"
+        - "🟠 High - Major confusion/blocker"
+        - "🟡 Medium - Significant improvement"
+        - "🟢 Low - Nice to have"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful
+      placeholder: |
+        - Related issues or discussions
+        - Examples from other projects
+        - Screenshots or diagrams
+        - Links to relevant resources
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you like to help fix this?
+      options:
+        - label: I can submit a PR to fix this documentation
+          required: false
+        - label: I can help review the documentation changes
+          required: false
+        - label: I can provide additional examples or clarification
+          required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have checked the latest documentation
+          required: true
+        - label: This is not a duplicate issue
+          required: true
+        - label: I have provided specific suggestions for improvement
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Thank you for helping improve our documentation! 📚**
+
+        Clear documentation helps everyone in the hypervigilant community. Your contribution is appreciated!

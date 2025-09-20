@@ -1,0 +1,248 @@
+name: ⚡ Performance Issue
+description: Report performance degradation, bottlenecks, or resource usage problems
+title: "[PERF]: "
+labels: ["performance", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Report Performance Issues in hypervigilant
+
+        Help us optimize hypervigilant by providing detailed performance metrics and profiling data.
+
+        **Before submitting:**
+        - 🔍 Search existing performance issues
+        - 📊 Gather profiling data and metrics
+        - 🧪 Test with latest version
+        - ⚡ Isolate the performance bottleneck
+
+  - type: dropdown
+    id: performance-type
+    attributes:
+      label: Performance Issue Type
+      description: What kind of performance problem are you experiencing?
+      multiple: true
+      options:
+        - "🐌 Slow Execution - Takes longer than expected"
+        - "💾 High Memory Usage - Excessive RAM consumption"
+        - "🔥 High CPU Usage - CPU bottleneck"
+        - "🎮 GPU Bottleneck - GPU underutilization or saturation"
+        - "💽 I/O Bottleneck - Disk or network I/O issues"
+        - "📉 Performance Regression - Slower than previous version"
+        - "🔄 Concurrency Issues - Threading/async problems"
+        - "📊 Scalability - Doesn't scale with load/data size"
+    validations:
+      required: true
+
+  - type: textarea
+    id: performance-description
+    attributes:
+      label: Performance Issue Description
+      description: Describe the performance problem you're experiencing
+      placeholder: |
+        Describe the performance issue:
+        - What operation is slow or resource-intensive?
+        - When does the issue occur?
+        - How does it impact your workflow?
+        - Any patterns you've noticed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: performance-metrics
+    attributes:
+      label: Performance Metrics
+      description: Provide before/after metrics or current vs expected performance
+      placeholder: |
+        Current Performance:
+        - Execution time: X seconds
+        - Memory usage: X GB
+        - CPU usage: X%
+        - GPU usage: X%
+        - Throughput: X items/sec
+
+        Expected/Previous Performance:
+        - Execution time: Y seconds
+        - Memory usage: Y GB
+        - etc.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-code
+    attributes:
+      label: Minimal Reproduction Code
+      description: Provide minimal code that reproduces the performance issue
+      placeholder: |
+        ```python
+        import hypervigilant
+        import time
+
+        # Setup
+        data = generate_test_data(size=10000)
+
+        # Performance issue occurs here
+        start = time.time()
+        result = hypervigilant.slow_operation(data)
+        print(f"Time: {time.time() - start:.2f}s")
+        ```
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: profiling-data
+    attributes:
+      label: Profiling Data
+      description: Include profiling output (cProfile, memory_profiler, py-spy, etc.)
+      placeholder: |
+        ```
+        # Example cProfile output
+        ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1000    5.123    0.005    8.456    0.008   slow_function.py:42(process)
+
+        # Example memory profiler output
+        Line #    Mem usage    Increment  Occurrences   Line Contents
+        45       100.2 MiB    50.1 MiB           1   large_allocation = [0] * 10000000
+        ```
+      render: shell
+
+  - type: textarea
+    id: system-specs
+    attributes:
+      label: System Specifications
+      description: Provide detailed hardware and environment information
+      placeholder: |
+        Hardware:
+        - CPU: Intel i7-9700K (8 cores)
+        - RAM: 32GB DDR4
+        - GPU: NVIDIA RTX 3080 (10GB VRAM)
+        - Storage: NVMe SSD
+
+        Environment:
+        - OS: Ubuntu 22.04
+        - Python: 3.12.0
+        - hypervigilant: 11.0.0
+        - Running in: Docker/VM/Bare metal
+        - Concurrent processes: X
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: dataset-characteristics
+    attributes:
+      label: Dataset/Load Characteristics
+      description: Describe the data or load that triggers the performance issue
+      placeholder: |
+        - Data size: 1M records, 500MB
+        - Data type: JSON/CSV/Binary
+        - Processing pattern: Batch/Stream
+        - Concurrency level: 10 threads
+        - Request rate: 1000 req/s
+
+  - type: dropdown
+    id: bottleneck-location
+    attributes:
+      label: Identified Bottleneck
+      description: Where do you think the bottleneck is?
+      options:
+        - "CPU-bound - Computation intensive"
+        - "Memory-bound - High allocation/GC"
+        - "I/O-bound - Disk/Network waiting"
+        - "GPU-bound - GPU computation"
+        - "Lock contention - Threading issues"
+        - "Unknown - Need investigation"
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted-optimizations
+    attributes:
+      label: Attempted Optimizations
+      description: What have you tried to improve performance?
+      placeholder: |
+        - Tried different batch sizes
+        - Enabled/disabled caching
+        - Used multiprocessing instead of threading
+        - Optimized data structures
+        - Results from each attempt
+
+  - type: input
+    id: performance-regression
+    attributes:
+      label: Last Known Good Version
+      description: If this is a regression, which version performed well?
+      placeholder: "10.5.0"
+
+  - type: textarea
+    id: benchmarks
+    attributes:
+      label: Benchmark Scripts
+      description: Provide any benchmark scripts you've created
+      placeholder: |
+        ```python
+        # Benchmark script to reproduce performance measurements
+        import hypervigilant
+        import timeit
+
+        def benchmark():
+            # Your benchmark code
+            pass
+
+        times = timeit.repeat(benchmark, number=100, repeat=5)
+        print(f"Average: {sum(times)/len(times):.3f}s")
+        ```
+      render: python
+
+  - type: dropdown
+    id: impact-level
+    attributes:
+      label: Performance Impact
+      description: How severely does this affect your use case?
+      options:
+        - "🔴 Critical - Unusable performance"
+        - "🟠 High - Significant delays"
+        - "🟡 Medium - Noticeable but workable"
+        - "🟢 Low - Minor optimization needed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant information
+      placeholder: |
+        - Flame graphs or visualizations
+        - Comparison with similar libraries
+        - Production monitoring data
+        - Related issues or PRs
+        - Performance requirements/SLAs
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Performance Issue Checklist
+      options:
+        - label: I've profiled the code to identify bottlenecks
+          required: false
+        - label: I've tested with the latest version
+          required: true
+        - label: I've provided minimal reproduction code
+          required: true
+        - label: I've included system specifications
+          required: true
+        - label: I can provide additional profiling data if needed
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Thank you for the detailed performance report! ⚡**
+
+        Performance optimization is crucial for hypervigilant. We'll analyze your data and work on improvements.
