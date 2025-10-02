@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypervigilant"
-version = "1.0.0"
+version = "2.0.0"
 description = "A collection of code for hypervigilant - wrapper for instrumentation."
 authors = [{name="GAO Hongnan", email="hongnangao@gmail.com"}]
 maintainers = [{name="GAO Hongnan", email="hongnangao@gmail.com"}]
@@ -30,6 +30,8 @@ dependencies = [
 [project.optional-dependencies]
 playground = [
     "pydanticonf>=1.0.0",
+    "pydantic>=2.10.6",
+    "rich>=13.9.4",
 ]
 
 [dependency-groups]

@@ -479,12 +479,14 @@ wheels = [
 
 [[package]]
 name = "hypervigilant"
-version = "1.0.0"
+version = "2.0.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
 playground = [
+    { name = "pydantic" },
     { name = "pydanticonf" },
+    { name = "rich" },
 ]
 
 [package.dev-dependencies]
@@ -542,7 +544,11 @@ type = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydanticonf", marker = "extra == 'playground'", specifier = ">=1.0.0" }]
+requires-dist = [
+    { name = "pydantic", marker = "extra == 'playground'", specifier = ">=2.10.6" },
+    { name = "pydanticonf", marker = "extra == 'playground'", specifier = ">=1.0.0" },
+    { name = "rich", marker = "extra == 'playground'", specifier = ">=13.9.4" },
+]
 provides-extras = ["playground"]
 
 [package.metadata.requires-dev]

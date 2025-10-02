@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
+from collections.abc import Sequence
 
 
 def get_logger(
     name: str | None = None,
     *,
     level: int | str | None = None,
-    handlers: list[logging.Handler] | None = None,
+    handlers: Sequence[logging.Handler] | None = None,
     formatter: logging.Formatter | None = None,
-    propagate: bool | None = None,
-    **kwargs: Any,
+    propagate: bool = False,
 ) -> logging.Logger:
     logger = logging.getLogger(name or __name__)
 
@@ -31,10 +30,6 @@ def get_logger(
             handler.setFormatter(formatter)
         logger.addHandler(handler)
 
-    if propagate is not None:
-        logger.propagate = propagate
-
-    for key, value in kwargs.items():
-        setattr(logger, key, value)
+    logger.propagate = propagate
 
     return logger
