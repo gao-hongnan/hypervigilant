@@ -13,7 +13,7 @@ def configure_logger(
     formatter: logging.Formatter | None = None,
     propagate: bool = True,
 ) -> logging.Logger:
-    logger = logging.getLogger(name or __name__)
+    logger = logging.getLogger(name)
 
     if level is not None:
         logger.setLevel(level if isinstance(level, int) else getattr(logging, level))

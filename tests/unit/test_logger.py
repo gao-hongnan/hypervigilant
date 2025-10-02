@@ -9,7 +9,7 @@ from hypervigilant.logger import configure_logger
 def test_configure_logger_without_name() -> None:
     logger = configure_logger()
     assert isinstance(logger, logging.Logger)
-    assert logger.name == "hypervigilant.logger"
+    assert logger.name == "root"
     assert len(logger.handlers) > 0
 
 
