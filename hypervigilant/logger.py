@@ -21,7 +21,7 @@ def configure_logger(
     if handlers is not None:
         logger.handlers.clear()
         for handler in handlers:
-            if formatter and not handler.formatter:
+            if formatter:
                 handler.setFormatter(formatter)
             logger.addHandler(handler)
     elif not logger.handlers:
