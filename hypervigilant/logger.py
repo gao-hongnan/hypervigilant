@@ -5,13 +5,13 @@ import sys
 from collections.abc import Sequence
 
 
-def get_logger(
+def configure_logger(
     name: str | None = None,
     *,
     level: int | str | None = None,
     handlers: Sequence[logging.Handler] | None = None,
     formatter: logging.Formatter | None = None,
-    propagate: bool = False,
+    propagate: bool = True,
 ) -> logging.Logger:
     logger = logging.getLogger(name or __name__)
 
