@@ -46,7 +46,9 @@ def test_get_logger_propagate():
     assert logger2.propagate is True
 
 
-def test_get_logger_kwargs():
-    logger = get_logger("extra_attrs", custom_attr="test_value")
+def test_get_logger_custom_attributes():
+    # Users can still set custom attributes directly on the logger
+    logger = get_logger("extra_attrs")
+    logger.custom_attr = "test_value"  # type: ignore[attr-defined]
     assert hasattr(logger, "custom_attr")
     assert getattr(logger, "custom_attr") == "test_value"  # noqa: B009
