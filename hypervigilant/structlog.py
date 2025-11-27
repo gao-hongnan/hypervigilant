@@ -31,7 +31,7 @@ __all__ = [
     "clear_context",
 ]
 
-BoundLogger = structlog.stdlib.BoundLogger
+type BoundLogger = structlog.stdlib.BoundLogger
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
 
 _LOG_LEVEL_MAP: dict[str, int] = {
