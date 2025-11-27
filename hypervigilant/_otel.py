@@ -14,7 +14,7 @@ def is_otel_available() -> bool:
     global _otel_available
     if _otel_available is None:
         try:
-            from opentelemetry import trace
+            from opentelemetry import trace  # type: ignore[import-not-found]
 
             _ = trace.get_current_span
             _otel_available = True
@@ -31,7 +31,7 @@ def add_otel_trace_context(
     if not is_otel_available():
         return event_dict
 
-    from opentelemetry import trace
+    from opentelemetry import trace  # type: ignore[import-not-found]
 
     current_span = trace.get_current_span()
     if current_span.is_recording():
