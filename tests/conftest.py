@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from hypervigilant import native
 from hypervigilant.structlog import LoggerFactory
 
 if TYPE_CHECKING:
@@ -64,6 +65,7 @@ def log_capture() -> Generator[LogCapture, None, None]:
 def reset_logging() -> Generator[None, None, None]:
     yield
     LoggerFactory.reset()
+    native.LoggerFactory.reset()
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(logging.WARNING)
@@ -73,15 +75,12 @@ def reset_logging() -> Generator[None, None, None]:
 def temp_log_file(tmp_path: object) -> str:
     from pathlib import Path
 
-    if isinstance(tmp_path, Path):
-        return str(tmp_path / "test.log")
-    raise TypeError("tmp_path fixture returned unexpected type")
+    return str(Path(tmp_path) / "test.log")  # type: ignore[arg-type]
 
 
 @pytest.fixture
 def configured_logger() -> BoundLogger:
     from hypervigilant.structlog import LoggingConfig, configure_logging, get_logger
 
-    config = LoggingConfig(level="DEBUG", json_output=False)
-    configure_logging(config)
+    configure_logging(LoggingConfig(level="DEBUG", json_output=False))
     return get_logger("test")

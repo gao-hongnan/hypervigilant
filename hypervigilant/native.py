@@ -5,7 +5,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,13 +14,14 @@ __all__ = [
     "LogLevel",
     "LoggingConfig",
     "JSONFormatter",
+    "LoggerFactory",
     "configure_logging",
     "get_logger",
 ]
 
-LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
+type LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
 
-_LOG_LEVEL_MAP: dict[str, int] = {
+_LOG_LEVEL_MAP: Final[dict[str, int]] = {
     "CRITICAL": logging.CRITICAL,
     "ERROR": logging.ERROR,
     "WARNING": logging.WARNING,
@@ -28,6 +29,18 @@ _LOG_LEVEL_MAP: dict[str, int] = {
     "DEBUG": logging.DEBUG,
     "NOTSET": logging.NOTSET,
 }
+
+_STANDARD_LOG_RECORD_ATTRS: Final[frozenset[str]] = frozenset(
+    logging.LogRecord(
+        name="",
+        level=0,
+        pathname="",
+        lineno=0,
+        msg="",
+        args=(),
+        exc_info=None,
+    ).__dict__.keys()
+)
 
 
 class LoggingConfig(BaseSettings):
@@ -64,16 +77,6 @@ class LoggingConfig(BaseSettings):
 class JSONFormatter(logging.Formatter):
     def __init__(self, datefmt: str | None = None) -> None:
         super().__init__(datefmt=datefmt)
-        dummy = logging.LogRecord(
-            name="",
-            level=0,
-            pathname="",
-            lineno=0,
-            msg="",
-            args=(),
-            exc_info=None,
-        )
-        self._standard_attrs = frozenset(dummy.__dict__.keys())
 
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict[str, Any] = {
@@ -89,50 +92,82 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        extras = {k: v for k, v in record.__dict__.items() if k not in self._standard_attrs and not k.startswith("_")}
+        extras = {
+            k: v for k, v in record.__dict__.items() if k not in _STANDARD_LOG_RECORD_ATTRS and not k.startswith("_")
+        }
         log_data.update(extras)
 
         return json.dumps(log_data, default=str)
 
 
-_handler: logging.Handler | None = None
+class LoggerFactory:
+    _configured: bool = False
+    _handler: logging.Handler | None = None
+
+    @classmethod
+    def create(cls, config: LoggingConfig) -> logging.Logger:
+        root = logging.getLogger()
+
+        if cls._handler is not None:
+            if cls._handler in root.handlers:
+                root.removeHandler(cls._handler)
+            cls._handler.close()
+
+        handler: logging.Handler
+        if config.file_path:
+            log_path = Path(config.file_path)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            handler = RotatingFileHandler(
+                filename=str(log_path),
+                maxBytes=config.max_bytes,
+                backupCount=config.backup_count,
+                encoding="utf-8",
+            )
+        else:
+            handler = logging.StreamHandler(sys.stdout)
+
+        handler.setLevel(_LOG_LEVEL_MAP[config.level])
+
+        if config.json_output:
+            handler.setFormatter(JSONFormatter(datefmt=config.date_format))
+        else:
+            handler.setFormatter(logging.Formatter(fmt=config.format, datefmt=config.date_format))
+
+        root.addHandler(handler)
+        root.setLevel(_LOG_LEVEL_MAP[config.level])
+
+        cls._handler = handler
+        cls._configured = True
+
+        for lib_name, lib_level in config.library_log_levels.items():
+            logging.getLogger(lib_name).setLevel(_LOG_LEVEL_MAP[lib_level])
+
+        return root
+
+    @classmethod
+    def reset(cls) -> None:
+        if cls._handler is not None:
+            root = logging.getLogger()
+            if cls._handler in root.handlers:
+                root.removeHandler(cls._handler)
+            cls._handler.close()
+            cls._handler = None
+        cls._configured = False
+
+
+_default_config: LoggingConfig | None = None
+
+
+def _get_default_config() -> LoggingConfig:
+    global _default_config
+    if _default_config is None:
+        _default_config = LoggingConfig()
+    return _default_config
 
 
 def configure_logging(config: LoggingConfig | None = None) -> None:
-    global _handler
-
-    cfg = config or LoggingConfig()
-    root = logging.getLogger()
-
-    if _handler is not None and _handler in root.handlers:
-        root.removeHandler(_handler)
-        _handler.close()
-
-    if cfg.file_path:
-        log_path = Path(cfg.file_path)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handler: logging.Handler = RotatingFileHandler(
-            filename=str(log_path),
-            maxBytes=cfg.max_bytes,
-            backupCount=cfg.backup_count,
-            encoding="utf-8",
-        )
-    else:
-        handler = logging.StreamHandler(sys.stdout)
-
-    handler.setLevel(_LOG_LEVEL_MAP[cfg.level])
-
-    if cfg.json_output:
-        handler.setFormatter(JSONFormatter(datefmt=cfg.date_format))
-    else:
-        handler.setFormatter(logging.Formatter(fmt=cfg.format, datefmt=cfg.date_format))
-
-    root.addHandler(handler)
-    root.setLevel(_LOG_LEVEL_MAP[cfg.level])
-    _handler = handler
-
-    for lib_name, lib_level in cfg.library_log_levels.items():
-        logging.getLogger(lib_name).setLevel(_LOG_LEVEL_MAP[lib_level])
+    actual_config = config if config is not None else _get_default_config()
+    LoggerFactory.create(actual_config)
 
 
 def get_logger(name: str | None = None) -> logging.Logger:
