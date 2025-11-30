@@ -7,29 +7,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 import structlog
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from structlog.processors import CallsiteParameter
 
 if TYPE_CHECKING:
     from structlog.types import Processor
 
-__all__ = [
-    "BoundLogger",
-    "LogLevel",
-    "LoggingConfig",
-    "FormatterStrategy",
-    "OutputStrategy",
-    "JsonFormatterStrategy",
-    "ConsoleFormatterStrategy",
-    "FileOutputStrategy",
-    "StreamOutputStrategy",
-    "LoggerFactory",
-    "configure_logging",
-    "get_logger",
-    "bind_context",
-    "clear_context",
-]
 
 type BoundLogger = structlog.stdlib.BoundLogger
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
@@ -44,13 +27,8 @@ _LOG_LEVEL_MAP: dict[str, int] = {
 }
 
 
-class LoggingConfig(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_prefix="LOG_",
-        extra="ignore",
-        frozen=True,
-    )
+class LoggingConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
     level: LogLevel = Field(default="INFO")
     json_output: bool = Field(default=False)
@@ -216,19 +194,8 @@ class LoggerFactory:
         structlog.contextvars.clear_contextvars()
 
 
-_default_config: LoggingConfig | None = None
-
-
-def _get_default_config() -> LoggingConfig:
-    global _default_config
-    if _default_config is None:
-        _default_config = LoggingConfig()
-    return _default_config
-
-
 def configure_logging(config: LoggingConfig | None = None) -> None:
-    actual_config = config if config is not None else _get_default_config()
-    LoggerFactory.create(actual_config)
+    LoggerFactory.create(config or LoggingConfig())
 
 
 def get_logger(name: str | None = None) -> BoundLogger:

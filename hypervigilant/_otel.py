@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from structlog.types import EventDict, WrappedLogger
 
-__all__ = ["add_otel_trace_context", "is_otel_available"]
 
 _otel_available: bool | None = None
 

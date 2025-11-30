@@ -7,17 +7,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-__all__ = [
-    "LogLevel",
-    "LoggingConfig",
-    "JSONFormatter",
-    "LoggerFactory",
-    "configure_logging",
-    "get_logger",
-]
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 type LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
 
@@ -43,13 +33,8 @@ _STANDARD_LOG_RECORD_ATTRS: Final[frozenset[str]] = frozenset(
 )
 
 
-class LoggingConfig(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_prefix="LOG_",
-        extra="ignore",
-        frozen=True,
-    )
+class LoggingConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
     level: LogLevel = Field(default="INFO")
     json_output: bool = Field(default=False)
@@ -155,19 +140,8 @@ class LoggerFactory:
         cls._configured = False
 
 
-_default_config: LoggingConfig | None = None
-
-
-def _get_default_config() -> LoggingConfig:
-    global _default_config
-    if _default_config is None:
-        _default_config = LoggingConfig()
-    return _default_config
-
-
 def configure_logging(config: LoggingConfig | None = None) -> None:
-    actual_config = config if config is not None else _get_default_config()
-    LoggerFactory.create(actual_config)
+    LoggerFactory.create(config or LoggingConfig())
 
 
 def get_logger(name: str | None = None) -> logging.Logger:

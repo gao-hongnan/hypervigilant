@@ -56,15 +56,6 @@ class TestLoggingConfig:
         assert config.library_log_levels == {"urllib3": "WARNING"}
         assert config.enable_otel is True
 
-    def test_env_loading(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-        monkeypatch.setenv("LOG_JSON_OUTPUT", "true")
-        monkeypatch.setenv("LOG_SERVICE_NAME", "env-service")
-        config = LoggingConfig()
-        assert config.level == "DEBUG"
-        assert config.json_output is True
-        assert config.service_name == "env-service"
-
     @pytest.mark.parametrize(
         ("level", "expected"),
         [("debug", "DEBUG"), ("Warning", "WARNING"), ("INFO", "INFO")],

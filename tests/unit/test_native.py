@@ -48,13 +48,6 @@ class TestLoggingConfig:
         assert config.backup_count == 5
         assert config.library_log_levels == {"urllib3": "WARNING"}
 
-    def test_env_loading(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-        monkeypatch.setenv("LOG_JSON_OUTPUT", "true")
-        config = LoggingConfig()
-        assert config.level == "DEBUG"
-        assert config.json_output is True
-
     @pytest.mark.parametrize(
         ("level", "expected"),
         [("debug", "DEBUG"), ("Warning", "WARNING"), ("INFO", "INFO")],
