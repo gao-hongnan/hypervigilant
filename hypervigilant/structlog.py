@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from structlog.processors import CallsiteParameter
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 type BoundLogger = structlog.stdlib.BoundLogger
-LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
+type LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
 
 _LOG_LEVEL_MAP: dict[str, int] = {
     "CRITICAL": logging.CRITICAL,
@@ -41,7 +41,7 @@ class LoggingConfig(BaseModel):
 
     @field_validator("level", "library_log_levels", mode="before")
     @classmethod
-    def validate_log_level(cls, v: Any) -> Any:
+    def validate_log_level(cls: type[LoggingConfig], v: ValidationInfo) -> Any:
         if isinstance(v, str):
             upper_v = v.upper()
             if upper_v not in _LOG_LEVEL_MAP:
