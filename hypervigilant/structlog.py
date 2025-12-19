@@ -4,53 +4,24 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import Field
 from structlog.processors import CallsiteParameter
+
+from .core import LOG_LEVEL_MAP, BaseLoggingConfig
 
 if TYPE_CHECKING:
     from structlog.types import Processor
 
 
 type BoundLogger = structlog.stdlib.BoundLogger
-type LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
-
-_LOG_LEVEL_MAP: dict[str, int] = {
-    "CRITICAL": logging.CRITICAL,
-    "ERROR": logging.ERROR,
-    "WARNING": logging.WARNING,
-    "INFO": logging.INFO,
-    "DEBUG": logging.DEBUG,
-    "NOTSET": logging.NOTSET,
-}
 
 
-class LoggingConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    level: LogLevel = Field(default="INFO")
-    json_output: bool = Field(default=False)
+class StructlogConfig(BaseLoggingConfig):
     service_name: str = Field(default="hypervigilant")
-    file_path: str | None = Field(default=None)
-    max_bytes: int = Field(default=50_000_000, ge=1024)
-    backup_count: int = Field(default=10, ge=0)
-    library_log_levels: dict[str, LogLevel] = Field(default_factory=dict)
     enable_otel: bool = Field(default=False)
-
-    @field_validator("level", "library_log_levels", mode="before")
-    @classmethod
-    def validate_log_level(cls: type[LoggingConfig], v: ValidationInfo) -> Any:
-        if isinstance(v, str):
-            upper_v = v.upper()
-            if upper_v not in _LOG_LEVEL_MAP:
-                valid_levels = ", ".join(_LOG_LEVEL_MAP.keys())
-                raise ValueError(f"Invalid log level: {v}. Must be one of: {valid_levels}")
-            return upper_v
-        if isinstance(v, dict):
-            return {k: cls.validate_log_level(val) for k, val in v.items()}
-        return v
 
 
 class FormatterStrategy(Protocol):
@@ -58,12 +29,12 @@ class FormatterStrategy(Protocol):
 
 
 class OutputStrategy(Protocol):
-    def create_handler(self, config: LoggingConfig) -> logging.Handler: ...
+    def create_handler(self, config: StructlogConfig) -> logging.Handler: ...
 
 
 def _get_otel_processor() -> Processor | None:
     try:
-        from hypervigilant._otel import get_otel_processor
+        from ._otel import get_otel_processor
 
         return get_otel_processor()
     except ImportError:
@@ -115,7 +86,7 @@ class ConsoleFormatterStrategy:
 
 
 class FileOutputStrategy:
-    def create_handler(self, config: LoggingConfig) -> logging.Handler:
+    def create_handler(self, config: StructlogConfig) -> logging.Handler:
         if not config.file_path:
             raise ValueError("file_path required for FileOutputStrategy")
 
@@ -128,27 +99,26 @@ class FileOutputStrategy:
             backupCount=config.backup_count,
             encoding="utf-8",
         )
-        handler.setLevel(_LOG_LEVEL_MAP[config.level])
+        handler.setLevel(LOG_LEVEL_MAP[config.level])
         handler.setFormatter(logging.Formatter("%(message)s"))
 
         return handler
 
 
 class StreamOutputStrategy:
-    def create_handler(self, config: LoggingConfig) -> logging.Handler:
+    def create_handler(self, config: StructlogConfig) -> logging.Handler:
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(_LOG_LEVEL_MAP[config.level])
+        handler.setLevel(LOG_LEVEL_MAP[config.level])
         handler.setFormatter(logging.Formatter("%(message)s"))
 
         return handler
 
 
 class LoggerFactory:
-    _configured: bool = False
     _handler: logging.Handler | None = None
 
     @classmethod
-    def create(cls, config: LoggingConfig) -> BoundLogger:
+    def create(cls: type[Self], config: StructlogConfig) -> BoundLogger:
         formatter: FormatterStrategy = JsonFormatterStrategy() if config.json_output else ConsoleFormatterStrategy()
 
         processors = formatter.build_processors(config.enable_otel)
@@ -170,32 +140,30 @@ class LoggerFactory:
             root.removeHandler(cls._handler)
 
         root.addHandler(new_handler)
-        root.setLevel(_LOG_LEVEL_MAP[config.level])
+        root.setLevel(LOG_LEVEL_MAP[config.level])
         cls._handler = new_handler
-        cls._configured = True
 
         for lib_name, lib_level in config.library_log_levels.items():
-            logging.getLogger(lib_name).setLevel(_LOG_LEVEL_MAP[lib_level])
+            logging.getLogger(lib_name).setLevel(LOG_LEVEL_MAP[lib_level])
 
         structlog.contextvars.bind_contextvars(service=config.service_name)
 
         return cast(BoundLogger, structlog.get_logger())
 
     @classmethod
-    def reset(cls) -> None:
+    def reset(cls: type[Self]) -> None:
         if cls._handler is not None:
             root = logging.getLogger()
             if cls._handler in root.handlers:
                 root.removeHandler(cls._handler)
             cls._handler.close()
             cls._handler = None
-        cls._configured = False
         structlog.reset_defaults()
         structlog.contextvars.clear_contextvars()
 
 
-def configure_logging(config: LoggingConfig | None = None) -> None:
-    LoggerFactory.create(config or LoggingConfig())
+def configure_logging(config: StructlogConfig | None = None) -> None:
+    LoggerFactory.create(config or StructlogConfig())
 
 
 def get_logger(name: str | None = None) -> BoundLogger:

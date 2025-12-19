@@ -80,7 +80,7 @@ def temp_log_file(tmp_path: object) -> str:
 
 @pytest.fixture
 def configured_logger() -> BoundLogger:
-    from hypervigilant.structlog import LoggingConfig, configure_logging, get_logger
+    from hypervigilant.structlog import StructlogConfig, configure_logging, get_logger
 
-    configure_logging(LoggingConfig(level="DEBUG", json_output=False))
+    configure_logging(StructlogConfig(level="DEBUG", json_output=False))
     return get_logger("test")

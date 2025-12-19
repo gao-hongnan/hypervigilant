@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from hypervigilant.structlog import (
+from .core import LOG_LEVEL_MAP, BaseLoggingConfig, LogLevel
+from .native import NativeLoggingConfig
+from .structlog import (
     BoundLogger,
     ConsoleFormatterStrategy,
     FileOutputStrategy,
     FormatterStrategy,
     JsonFormatterStrategy,
     LoggerFactory,
-    LoggingConfig,
-    LogLevel,
     OutputStrategy,
     StreamOutputStrategy,
+    StructlogConfig,
     bind_context,
     clear_context,
     configure_logging,
@@ -18,20 +19,23 @@ from hypervigilant.structlog import (
 )
 
 __all__ = [
+    "BaseLoggingConfig",
     "BoundLogger",
-    "LogLevel",
-    "LoggingConfig",
-    "FormatterStrategy",
-    "OutputStrategy",
-    "JsonFormatterStrategy",
     "ConsoleFormatterStrategy",
     "FileOutputStrategy",
-    "StreamOutputStrategy",
+    "FormatterStrategy",
+    "JsonFormatterStrategy",
+    "LOG_LEVEL_MAP",
+    "LogLevel",
     "LoggerFactory",
-    "configure_logging",
-    "get_logger",
+    "NativeLoggingConfig",
+    "OutputStrategy",
+    "StreamOutputStrategy",
+    "StructlogConfig",
     "bind_context",
     "clear_context",
+    "configure_logging",
+    "get_logger",
 ]
 
-__version__ = "7.0.0"
+__version__ = "13.0.0"

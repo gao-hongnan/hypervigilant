@@ -12,8 +12,8 @@ from hypervigilant.structlog import (
     FileOutputStrategy,
     JsonFormatterStrategy,
     LoggerFactory,
-    LoggingConfig,
     StreamOutputStrategy,
+    StructlogConfig,
     bind_context,
     clear_context,
     configure_logging,
@@ -24,9 +24,9 @@ if TYPE_CHECKING:
     from hypervigilant.structlog import FormatterStrategy
 
 
-class TestLoggingConfig:
+class TestStructlogConfig:
     def test_defaults(self) -> None:
-        config = LoggingConfig()
+        config = StructlogConfig()
         assert config.level == "INFO"
         assert config.json_output is False
         assert config.service_name == "hypervigilant"
@@ -37,7 +37,7 @@ class TestLoggingConfig:
         assert config.enable_otel is False
 
     def test_custom_values(self) -> None:
-        config = LoggingConfig(
+        config = StructlogConfig(
             level="DEBUG",
             json_output=True,
             service_name="test-service",
@@ -61,27 +61,27 @@ class TestLoggingConfig:
         [("debug", "DEBUG"), ("Warning", "WARNING"), ("INFO", "INFO")],
     )
     def test_level_normalization(self, level: str, expected: str) -> None:
-        config = LoggingConfig(level=level)  # type: ignore[arg-type]
+        config = StructlogConfig(level=level)  # type: ignore[arg-type]
         assert config.level == expected
 
     def test_invalid_level_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid log level"):
-            LoggingConfig(level="INVALID")  # type: ignore[arg-type]
+            StructlogConfig(level="INVALID")  # type: ignore[arg-type]
 
     def test_frozen(self) -> None:
         from pydantic import ValidationError
 
-        config = LoggingConfig()
+        config = StructlogConfig()
         with pytest.raises(ValidationError):
             config.level = "DEBUG"  # type: ignore[misc]
 
     def test_max_bytes_constraint(self) -> None:
         with pytest.raises(ValueError):
-            LoggingConfig(max_bytes=100)
+            StructlogConfig(max_bytes=100)
 
     def test_backup_count_constraint(self) -> None:
         with pytest.raises(ValueError):
-            LoggingConfig(backup_count=-1)
+            StructlogConfig(backup_count=-1)
 
 
 class TestFormatterStrategies:
@@ -109,7 +109,7 @@ class TestFormatterStrategies:
 class TestOutputStrategies:
     def test_stream_handler(self) -> None:
         strategy = StreamOutputStrategy()
-        config = LoggingConfig(level="DEBUG")
+        config = StructlogConfig(level="DEBUG")
         handler = strategy.create_handler(config)
         assert isinstance(handler, logging.StreamHandler)
         assert handler.level == logging.DEBUG
@@ -119,7 +119,7 @@ class TestOutputStrategies:
 
         log_file = tmp_path / "test.log"
         strategy = FileOutputStrategy()
-        config = LoggingConfig(file_path=str(log_file), max_bytes=2048, backup_count=3)
+        config = StructlogConfig(file_path=str(log_file), max_bytes=2048, backup_count=3)
         handler = strategy.create_handler(config)
         try:
             assert isinstance(handler, RotatingFileHandler)
@@ -132,7 +132,7 @@ class TestOutputStrategies:
     def test_file_handler_creates_dirs(self, tmp_path: Path) -> None:
         log_file = tmp_path / "subdir" / "nested" / "test.log"
         strategy = FileOutputStrategy()
-        config = LoggingConfig(file_path=str(log_file))
+        config = StructlogConfig(file_path=str(log_file))
         handler = strategy.create_handler(config)
         try:
             assert log_file.parent.exists()
@@ -142,44 +142,40 @@ class TestOutputStrategies:
     def test_file_handler_requires_path(self) -> None:
         strategy = FileOutputStrategy()
         with pytest.raises(ValueError, match="file_path required"):
-            strategy.create_handler(LoggingConfig())
+            strategy.create_handler(StructlogConfig())
 
 
 class TestLoggerFactory:
     def test_create_returns_bound_logger(self) -> None:
-        logger = LoggerFactory.create(LoggingConfig())
+        logger = LoggerFactory.create(StructlogConfig())
         assert all(hasattr(logger, m) for m in ("info", "error", "debug", "warning"))
         assert callable(logger.info)
 
     def test_create_sets_state(self) -> None:
-        LoggerFactory.create(LoggingConfig())
-        assert LoggerFactory._configured is True
+        LoggerFactory.create(StructlogConfig())
         assert LoggerFactory._handler is not None
 
     def test_reset_clears_state(self) -> None:
-        LoggerFactory.create(LoggingConfig())
+        LoggerFactory.create(StructlogConfig())
         LoggerFactory.reset()
-        configured = LoggerFactory._configured
-        handler = LoggerFactory._handler
-        assert configured is False
-        assert handler is None
+        assert LoggerFactory._handler is None
 
     def test_library_log_levels(self) -> None:
-        config = LoggingConfig(library_log_levels={"urllib3": "WARNING", "httpx": "ERROR"})
+        config = StructlogConfig(library_log_levels={"urllib3": "WARNING", "httpx": "ERROR"})
         LoggerFactory.create(config)
         assert logging.getLogger("urllib3").level == logging.WARNING
         assert logging.getLogger("httpx").level == logging.ERROR
 
     def test_service_context_bound(self) -> None:
-        LoggerFactory.create(LoggingConfig(service_name="test-service"))
+        LoggerFactory.create(StructlogConfig(service_name="test-service"))
         ctx = structlog.contextvars.get_contextvars()
         assert ctx.get("service") == "test-service"
 
     def test_handler_replacement(self) -> None:
-        LoggerFactory.create(LoggingConfig(level="DEBUG"))
+        LoggerFactory.create(StructlogConfig(level="DEBUG"))
         handler1 = LoggerFactory._handler
 
-        LoggerFactory.create(LoggingConfig(level="INFO"))
+        LoggerFactory.create(StructlogConfig(level="INFO"))
         handler2 = LoggerFactory._handler
 
         assert handler1 is not handler2
@@ -191,9 +187,9 @@ class TestLoggerFactory:
 class TestPublicAPI:
     def test_configure_logging(self) -> None:
         configure_logging()
-        assert LoggerFactory._configured is True
+        assert LoggerFactory._handler is not None
 
-        configure_logging(LoggingConfig(service_name="custom"))
+        configure_logging(StructlogConfig(service_name="custom"))
         ctx = structlog.contextvars.get_contextvars()
         assert ctx.get("service") == "custom"
 
@@ -236,7 +232,7 @@ class TestFileLogging:
         import json
 
         log_file = tmp_path / "app.log"
-        config = LoggingConfig(level="INFO", file_path=str(log_file), json_output=True)
+        config = StructlogConfig(level="INFO", file_path=str(log_file), json_output=True)
         configure_logging(config)
 
         get_logger("test").info("json file log", key="value")

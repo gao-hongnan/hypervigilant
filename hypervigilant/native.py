@@ -5,20 +5,11 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field
 
-type LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
-
-_LOG_LEVEL_MAP: Final[dict[str, int]] = {
-    "CRITICAL": logging.CRITICAL,
-    "ERROR": logging.ERROR,
-    "WARNING": logging.WARNING,
-    "INFO": logging.INFO,
-    "DEBUG": logging.DEBUG,
-    "NOTSET": logging.NOTSET,
-}
+from .core import LOG_LEVEL_MAP, BaseLoggingConfig
 
 _STANDARD_LOG_RECORD_ATTRS: Final[frozenset[str]] = frozenset(
     logging.LogRecord(
@@ -33,30 +24,9 @@ _STANDARD_LOG_RECORD_ATTRS: Final[frozenset[str]] = frozenset(
 )
 
 
-class LoggingConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    level: LogLevel = Field(default="INFO")
-    json_output: bool = Field(default=False)
+class NativeLoggingConfig(BaseLoggingConfig):
     format: str = Field(default="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     date_format: str = Field(default="%Y-%m-%d %H:%M:%S")
-    file_path: str | None = Field(default=None)
-    max_bytes: int = Field(default=50_000_000, ge=1024)
-    backup_count: int = Field(default=10, ge=0)
-    library_log_levels: dict[str, LogLevel] = Field(default_factory=dict)
-
-    @field_validator("level", "library_log_levels", mode="before")
-    @classmethod
-    def validate_log_level(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            upper_v = v.upper()
-            if upper_v not in _LOG_LEVEL_MAP:
-                valid = ", ".join(_LOG_LEVEL_MAP.keys())
-                raise ValueError(f"Invalid log level: {v}. Must be one of: {valid}")
-            return upper_v
-        if isinstance(v, dict):
-            return {k: cls.validate_log_level(val) for k, val in v.items()}
-        return v
 
 
 class JSONFormatter(logging.Formatter):
@@ -86,11 +56,10 @@ class JSONFormatter(logging.Formatter):
 
 
 class LoggerFactory:
-    _configured: bool = False
     _handler: logging.Handler | None = None
 
     @classmethod
-    def create(cls, config: LoggingConfig) -> logging.Logger:
+    def create(cls: type[Self], config: NativeLoggingConfig) -> logging.Logger:
         root = logging.getLogger()
 
         if cls._handler is not None:
@@ -111,7 +80,7 @@ class LoggerFactory:
         else:
             handler = logging.StreamHandler(sys.stdout)
 
-        handler.setLevel(_LOG_LEVEL_MAP[config.level])
+        handler.setLevel(LOG_LEVEL_MAP[config.level])
 
         if config.json_output:
             handler.setFormatter(JSONFormatter(datefmt=config.date_format))
@@ -119,29 +88,27 @@ class LoggerFactory:
             handler.setFormatter(logging.Formatter(fmt=config.format, datefmt=config.date_format))
 
         root.addHandler(handler)
-        root.setLevel(_LOG_LEVEL_MAP[config.level])
+        root.setLevel(LOG_LEVEL_MAP[config.level])
 
         cls._handler = handler
-        cls._configured = True
 
         for lib_name, lib_level in config.library_log_levels.items():
-            logging.getLogger(lib_name).setLevel(_LOG_LEVEL_MAP[lib_level])
+            logging.getLogger(lib_name).setLevel(LOG_LEVEL_MAP[lib_level])
 
         return root
 
     @classmethod
-    def reset(cls) -> None:
+    def reset(cls: type[Self]) -> None:
         if cls._handler is not None:
             root = logging.getLogger()
             if cls._handler in root.handlers:
                 root.removeHandler(cls._handler)
             cls._handler.close()
             cls._handler = None
-        cls._configured = False
 
 
-def configure_logging(config: LoggingConfig | None = None) -> None:
-    LoggerFactory.create(config or LoggingConfig())
+def configure_logging(config: NativeLoggingConfig | None = None) -> None:
+    LoggerFactory.create(config or NativeLoggingConfig())
 
 
 def get_logger(name: str | None = None) -> logging.Logger:

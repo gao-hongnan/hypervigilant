@@ -9,7 +9,7 @@ import pytest
 
 from hypervigilant.structlog import (
     LoggerFactory,
-    LoggingConfig,
+    StructlogConfig,
     bind_context,
     clear_context,
     configure_logging,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 class TestJsonOutput:
     def test_valid_json_with_all_fields(self, log_capture: LogCapture) -> None:
-        config = LoggingConfig(level="DEBUG", json_output=True, service_name="test-svc")
+        config = StructlogConfig(level="DEBUG", json_output=True, service_name="test-svc")
         configure_logging(config)
 
         logger = get_logger("integration.json")
@@ -43,7 +43,7 @@ class TestJsonOutput:
 
 class TestConsoleOutput:
     def test_readable(self, log_capture: LogCapture) -> None:
-        configure_logging(LoggingConfig(level="DEBUG", json_output=False))
+        configure_logging(StructlogConfig(level="DEBUG", json_output=False))
         get_logger("test").info("readable message", key="value")
 
         output = log_capture.get_output()
@@ -53,7 +53,7 @@ class TestConsoleOutput:
 class TestFileLogging:
     def test_rotation_and_persistence(self, tmp_path: Path) -> None:
         log_file = tmp_path / "rotating.log"
-        config = LoggingConfig(
+        config = StructlogConfig(
             level="DEBUG",
             file_path=str(log_file),
             max_bytes=1024,
@@ -83,7 +83,7 @@ class TestLogLevelFiltering:
         ],
     )
     def test_levels(self, log_capture: LogCapture, config_level: str, messages: dict[str, bool]) -> None:
-        configure_logging(LoggingConfig(level=config_level, json_output=False))  # type: ignore[arg-type]
+        configure_logging(StructlogConfig(level=config_level, json_output=False))  # type: ignore[arg-type]
         logger = get_logger("filter.test")
 
         logger.debug("debug msg")
@@ -99,7 +99,7 @@ class TestLogLevelFiltering:
                 assert f"{level} msg" not in output
 
     def test_library_suppression(self, log_capture: LogCapture) -> None:
-        config = LoggingConfig(level="DEBUG", json_output=False, library_log_levels={"noisy_lib": "ERROR"})
+        config = StructlogConfig(level="DEBUG", json_output=False, library_log_levels={"noisy_lib": "ERROR"})
         configure_logging(config)
 
         logging.getLogger("noisy_lib").warning("noisy - should not appear")
@@ -114,7 +114,7 @@ class TestLogLevelFiltering:
 
 class TestContextPropagation:
     def test_across_modules(self, log_capture: LogCapture) -> None:
-        configure_logging(LoggingConfig(level="INFO", json_output=True))
+        configure_logging(StructlogConfig(level="INFO", json_output=True))
         bind_context(request_id="req-456", user_id="user-789")
 
         get_logger("module1").info("log from module1")
@@ -127,7 +127,7 @@ class TestContextPropagation:
             assert log_entry.get("user_id") == "user-789"
 
     def test_clear(self, log_capture: LogCapture) -> None:
-        config = LoggingConfig(level="INFO", json_output=True)
+        config = StructlogConfig(level="INFO", json_output=True)
         configure_logging(config)
 
         bind_context(temp_key="temp_value")
@@ -144,7 +144,7 @@ class TestContextPropagation:
 
 class TestReconfiguration:
     def test_idempotent(self, log_capture: LogCapture) -> None:
-        config = LoggingConfig(level="INFO", json_output=False)
+        config = StructlogConfig(level="INFO", json_output=False)
         for _ in range(3):
             configure_logging(config)
 
@@ -152,10 +152,10 @@ class TestReconfiguration:
         assert log_capture.get_output().count("single message") == 1
 
     def test_level_change(self, log_capture: LogCapture) -> None:
-        configure_logging(LoggingConfig(level="ERROR", json_output=False))
+        configure_logging(StructlogConfig(level="ERROR", json_output=False))
         get_logger("test").info("should not appear")
 
-        configure_logging(LoggingConfig(level="DEBUG", json_output=False))
+        configure_logging(StructlogConfig(level="DEBUG", json_output=False))
         get_logger("test").info("should appear")
 
         output = log_capture.get_output()
@@ -165,7 +165,7 @@ class TestReconfiguration:
 
 class TestExceptionLogging:
     def test_exception_captured(self, log_capture: LogCapture) -> None:
-        configure_logging(LoggingConfig(level="ERROR", json_output=True))
+        configure_logging(StructlogConfig(level="ERROR", json_output=True))
 
         try:
             raise ValueError("test error message")
@@ -181,7 +181,7 @@ class TestExceptionLogging:
 
 class TestThreadSafety:
     def test_concurrent_logging(self, log_capture: LogCapture) -> None:
-        configure_logging(LoggingConfig(level="INFO", json_output=True))
+        configure_logging(StructlogConfig(level="INFO", json_output=True))
 
         def log_from_thread(thread_id: int) -> None:
             logger = get_logger(f"thread.{thread_id}")

@@ -10,15 +10,15 @@ import pytest
 from hypervigilant.native import (
     JSONFormatter,
     LoggerFactory,
-    LoggingConfig,
+    NativeLoggingConfig,
     configure_logging,
     get_logger,
 )
 
 
-class TestLoggingConfig:
+class TestNativeLoggingConfig:
     def test_defaults(self) -> None:
-        config = LoggingConfig()
+        config = NativeLoggingConfig()
         assert config.level == "INFO"
         assert config.json_output is False
         assert config.format == "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -29,7 +29,7 @@ class TestLoggingConfig:
         assert config.library_log_levels == {}
 
     def test_custom_values(self) -> None:
-        config = LoggingConfig(
+        config = NativeLoggingConfig(
             level="DEBUG",
             json_output=True,
             format="%(message)s",
@@ -53,30 +53,30 @@ class TestLoggingConfig:
         [("debug", "DEBUG"), ("Warning", "WARNING"), ("INFO", "INFO")],
     )
     def test_level_normalization(self, level: str, expected: str) -> None:
-        config = LoggingConfig(level=level)  # type: ignore[arg-type]
+        config = NativeLoggingConfig(level=level)  # type: ignore[arg-type]
         assert config.level == expected
 
     def test_invalid_level_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid log level"):
-            LoggingConfig(level="INVALID")  # type: ignore[arg-type]
+            NativeLoggingConfig(level="INVALID")  # type: ignore[arg-type]
 
     def test_frozen(self) -> None:
         from pydantic import ValidationError
 
-        config = LoggingConfig()
+        config = NativeLoggingConfig()
         with pytest.raises(ValidationError):
             config.level = "DEBUG"  # type: ignore[misc]
 
     def test_max_bytes_constraint(self) -> None:
         with pytest.raises(ValueError):
-            LoggingConfig(max_bytes=100)
+            NativeLoggingConfig(max_bytes=100)
 
     def test_backup_count_constraint(self) -> None:
         with pytest.raises(ValueError):
-            LoggingConfig(backup_count=-1)
+            NativeLoggingConfig(backup_count=-1)
 
     def test_library_log_levels_normalization(self) -> None:
-        config = LoggingConfig(library_log_levels={"urllib3": "warning", "httpx": "Error"})  # type: ignore[dict-item]
+        config = NativeLoggingConfig(library_log_levels={"urllib3": "warning", "httpx": "Error"})  # type: ignore[dict-item]
         assert config.library_log_levels == {"urllib3": "WARNING", "httpx": "ERROR"}
 
 
@@ -165,32 +165,30 @@ class TestJSONFormatter:
 
 class TestLoggerFactory:
     def test_create_returns_logger(self) -> None:
-        logger = LoggerFactory.create(LoggingConfig())
+        logger = LoggerFactory.create(NativeLoggingConfig())
         assert all(hasattr(logger, m) for m in ("info", "error", "debug", "warning"))
         assert callable(logger.info)
 
     def test_create_sets_state(self) -> None:
-        LoggerFactory.create(LoggingConfig())
-        assert LoggerFactory._configured is True
+        LoggerFactory.create(NativeLoggingConfig())
         assert LoggerFactory._handler is not None
 
     def test_reset_clears_state(self) -> None:
-        LoggerFactory.create(LoggingConfig())
+        LoggerFactory.create(NativeLoggingConfig())
         LoggerFactory.reset()
-        assert LoggerFactory._configured is False
         assert LoggerFactory._handler is None
 
     def test_library_log_levels(self) -> None:
-        config = LoggingConfig(library_log_levels={"urllib3": "WARNING", "httpx": "ERROR"})
+        config = NativeLoggingConfig(library_log_levels={"urllib3": "WARNING", "httpx": "ERROR"})
         LoggerFactory.create(config)
         assert logging.getLogger("urllib3").level == logging.WARNING
         assert logging.getLogger("httpx").level == logging.ERROR
 
     def test_handler_replacement(self) -> None:
-        LoggerFactory.create(LoggingConfig(level="DEBUG"))
+        LoggerFactory.create(NativeLoggingConfig(level="DEBUG"))
         handler1 = LoggerFactory._handler
 
-        LoggerFactory.create(LoggingConfig(level="INFO"))
+        LoggerFactory.create(NativeLoggingConfig(level="INFO"))
         handler2 = LoggerFactory._handler
 
         assert handler1 is not handler2
@@ -200,21 +198,21 @@ class TestLoggerFactory:
 
     def test_no_duplicate_handlers(self) -> None:
         for _ in range(5):
-            LoggerFactory.create(LoggingConfig())
+            LoggerFactory.create(NativeLoggingConfig())
 
         root = logging.getLogger()
         handler_count = sum(1 for h in root.handlers if h is LoggerFactory._handler)
         assert handler_count == 1
 
     def test_stream_handler_created(self) -> None:
-        LoggerFactory.create(LoggingConfig())
+        LoggerFactory.create(NativeLoggingConfig())
         assert isinstance(LoggerFactory._handler, logging.StreamHandler)
 
     def test_file_handler_created(self, tmp_path: Path) -> None:
         from logging.handlers import RotatingFileHandler
 
         log_file = tmp_path / "test.log"
-        config = LoggingConfig(file_path=str(log_file))
+        config = NativeLoggingConfig(file_path=str(log_file))
         LoggerFactory.create(config)
 
         assert isinstance(LoggerFactory._handler, RotatingFileHandler)
@@ -224,12 +222,12 @@ class TestLoggerFactory:
 class TestPublicAPI:
     def test_configure_logging_default(self) -> None:
         configure_logging()
-        assert LoggerFactory._configured is True
+        assert LoggerFactory._handler is not None
 
     def test_configure_logging_custom(self) -> None:
-        config = LoggingConfig(level="DEBUG")
+        config = NativeLoggingConfig(level="DEBUG")
         configure_logging(config)
-        assert LoggerFactory._configured is True
+        assert LoggerFactory._handler is not None
         root = logging.getLogger()
         assert root.level == logging.DEBUG
 
@@ -245,9 +243,9 @@ class TestPublicAPI:
         assert logger.name == "my_module"
 
     def test_reconfiguration_idempotent(self) -> None:
-        configure_logging(LoggingConfig(level="DEBUG"))
-        configure_logging(LoggingConfig(level="INFO"))
-        configure_logging(LoggingConfig(level="WARNING"))
+        configure_logging(NativeLoggingConfig(level="DEBUG"))
+        configure_logging(NativeLoggingConfig(level="INFO"))
+        configure_logging(NativeLoggingConfig(level="WARNING"))
 
         root = logging.getLogger()
         hypervigilant_handlers = [h for h in root.handlers if h is LoggerFactory._handler]
@@ -257,7 +255,7 @@ class TestPublicAPI:
 class TestFileLogging:
     def test_file_creation(self, tmp_path: Path) -> None:
         log_file = tmp_path / "app.log"
-        config = LoggingConfig(level="INFO", file_path=str(log_file))
+        config = NativeLoggingConfig(level="INFO", file_path=str(log_file))
         configure_logging(config)
 
         logger = get_logger("test")
@@ -270,7 +268,7 @@ class TestFileLogging:
 
     def test_file_json_output(self, tmp_path: Path) -> None:
         log_file = tmp_path / "app.log"
-        config = LoggingConfig(level="INFO", file_path=str(log_file), json_output=True)
+        config = NativeLoggingConfig(level="INFO", file_path=str(log_file), json_output=True)
         configure_logging(config)
 
         logger = get_logger("test")
@@ -284,7 +282,7 @@ class TestFileLogging:
 
     def test_file_creates_parent_dirs(self, tmp_path: Path) -> None:
         log_file = tmp_path / "subdir" / "nested" / "app.log"
-        config = LoggingConfig(file_path=str(log_file))
+        config = NativeLoggingConfig(file_path=str(log_file))
         configure_logging(config)
 
         assert log_file.parent.exists()
@@ -294,7 +292,7 @@ class TestFileLogging:
         from logging.handlers import RotatingFileHandler
 
         log_file = tmp_path / "app.log"
-        config = LoggingConfig(file_path=str(log_file), max_bytes=2048, backup_count=3)
+        config = NativeLoggingConfig(file_path=str(log_file), max_bytes=2048, backup_count=3)
         configure_logging(config)
 
         handler = LoggerFactory._handler
@@ -310,7 +308,7 @@ class TestLogLevelFiltering:
         handler = logging.StreamHandler(stream)
         handler.setLevel(logging.WARNING)
 
-        config = LoggingConfig(level="WARNING")
+        config = NativeLoggingConfig(level="WARNING")
         configure_logging(config)
 
         root = logging.getLogger()
@@ -335,7 +333,7 @@ class TestLogLevelFiltering:
         handler = logging.StreamHandler(stream)
         handler.setFormatter(logging.Formatter("%(name)s - %(message)s"))
 
-        config = LoggingConfig(level="DEBUG", library_log_levels={"noisy_lib": "ERROR"})
+        config = NativeLoggingConfig(level="DEBUG", library_log_levels={"noisy_lib": "ERROR"})
         configure_logging(config)
 
         root = logging.getLogger()
