@@ -37,5 +37,3 @@ __all__ = [
     "configure_logging",
     "get_logger",
 ]
-
-__version__ = "13.0.0"

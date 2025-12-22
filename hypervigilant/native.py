@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import Any, Final, Self
+from typing import Any, ClassVar, Final, Self
 
 from pydantic import Field
 
+from ._factory import BaseLoggerFactory
+from ._handlers import apply_library_log_levels, create_rotating_file_handler, create_stream_handler
 from .core import LOG_LEVEL_MAP, BaseLoggingConfig
 
 _STANDARD_LOG_RECORD_ATTRS: Final[frozenset[str]] = frozenset(
@@ -56,56 +55,36 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_data, default=str, indent=self._indent)
 
 
-class LoggerFactory:
-    _handler: logging.Handler | None = None
+class LoggerFactory(BaseLoggerFactory[NativeLoggingConfig, logging.Logger]):
+    _handler: ClassVar[logging.Handler | None] = None
+    _close_on_replace: ClassVar[bool] = True
 
     @classmethod
     def create(cls: type[Self], config: NativeLoggingConfig) -> logging.Logger:
-        root = logging.getLogger()
-
-        if cls._handler is not None:
-            if cls._handler in root.handlers:
-                root.removeHandler(cls._handler)
-            cls._handler.close()
-
         handler: logging.Handler
         if config.file_path:
-            log_path = Path(config.file_path)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            handler = RotatingFileHandler(
-                filename=str(log_path),
-                maxBytes=config.max_bytes,
-                backupCount=config.backup_count,
-                encoding="utf-8",
+            handler = create_rotating_file_handler(
+                config.file_path,
+                config.max_bytes,
+                config.backup_count,
+                config.level,
             )
         else:
-            handler = logging.StreamHandler(sys.stdout)
-
-        handler.setLevel(LOG_LEVEL_MAP[config.level])
+            handler = create_stream_handler(config.level)
 
         if config.json_output:
             handler.setFormatter(JSONFormatter(datefmt=config.date_format, indent=config.json_indent))
         else:
             handler.setFormatter(logging.Formatter(fmt=config.format, datefmt=config.date_format))
 
-        root.addHandler(handler)
+        cls._replace_handler(handler)
+
+        root = logging.getLogger()
         root.setLevel(LOG_LEVEL_MAP[config.level])
 
-        cls._handler = handler
-
-        for lib_name, lib_level in config.library_log_levels.items():
-            logging.getLogger(lib_name).setLevel(LOG_LEVEL_MAP[lib_level])
+        apply_library_log_levels(config.library_log_levels)
 
         return root
-
-    @classmethod
-    def reset(cls: type[Self]) -> None:
-        if cls._handler is not None:
-            root = logging.getLogger()
-            if cls._handler in root.handlers:
-                root.removeHandler(cls._handler)
-            cls._handler.close()
-            cls._handler = None
 
 
 def configure_logging(config: NativeLoggingConfig | None = None) -> None:

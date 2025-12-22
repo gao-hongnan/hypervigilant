@@ -485,7 +485,7 @@ wheels = [
 
 [[package]]
 name = "hypervigilant"
-version = "16.0.0"
+version = "17.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

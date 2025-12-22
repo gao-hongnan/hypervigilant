@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import logging
-import sys
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Self, cast
 
 import structlog
 from pydantic import Field
 from structlog.processors import CallsiteParameter
 
+from ._factory import BaseLoggerFactory
+from ._handlers import apply_library_log_levels, create_rotating_file_handler, create_stream_handler
 from .core import LOG_LEVEL_MAP, BaseLoggingConfig
 
 if TYPE_CHECKING:
@@ -93,32 +92,26 @@ class FileOutputStrategy:
         if not config.file_path:
             raise ValueError("file_path required for FileOutputStrategy")
 
-        log_path = Path(config.file_path)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-
-        handler = RotatingFileHandler(
-            filename=str(log_path),
-            maxBytes=config.max_bytes,
-            backupCount=config.backup_count,
-            encoding="utf-8",
+        handler = create_rotating_file_handler(
+            config.file_path,
+            config.max_bytes,
+            config.backup_count,
+            config.level,
         )
-        handler.setLevel(LOG_LEVEL_MAP[config.level])
         handler.setFormatter(logging.Formatter("%(message)s"))
-
         return handler
 
 
 class StreamOutputStrategy:
     def create_handler(self, config: StructlogConfig) -> logging.Handler:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(LOG_LEVEL_MAP[config.level])
+        handler = create_stream_handler(config.level)
         handler.setFormatter(logging.Formatter("%(message)s"))
-
         return handler
 
 
-class LoggerFactory:
-    _handler: logging.Handler | None = None
+class LoggerFactory(BaseLoggerFactory[StructlogConfig, BoundLogger]):
+    _handler: ClassVar[logging.Handler | None] = None
+    _close_on_replace: ClassVar[bool] = False
 
     @classmethod
     def create(cls: type[Self], config: StructlogConfig) -> BoundLogger:
@@ -139,30 +132,19 @@ class LoggerFactory:
         output: OutputStrategy = FileOutputStrategy() if config.file_path else StreamOutputStrategy()
         new_handler = output.create_handler(config)
 
+        cls._replace_handler(new_handler)
+
         root = logging.getLogger()
-
-        if cls._handler is not None and cls._handler in root.handlers:
-            root.removeHandler(cls._handler)
-
-        root.addHandler(new_handler)
         root.setLevel(LOG_LEVEL_MAP[config.level])
-        cls._handler = new_handler
 
-        for lib_name, lib_level in config.library_log_levels.items():
-            logging.getLogger(lib_name).setLevel(LOG_LEVEL_MAP[lib_level])
+        apply_library_log_levels(config.library_log_levels)
 
         structlog.contextvars.bind_contextvars(service=config.service_name)
 
         return cast(BoundLogger, structlog.get_logger())
 
     @classmethod
-    def reset(cls: type[Self]) -> None:
-        if cls._handler is not None:
-            root = logging.getLogger()
-            if cls._handler in root.handlers:
-                root.removeHandler(cls._handler)
-            cls._handler.close()
-            cls._handler = None
+    def _on_reset(cls: type[Self]) -> None:
         structlog.reset_defaults()
         structlog.contextvars.clear_contextvars()
 
