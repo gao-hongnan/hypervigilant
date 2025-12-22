@@ -67,12 +67,15 @@ def _build_shared_processors(enable_otel: bool, timestamp_fmt: str, utc: bool) -
 
 
 class JsonFormatterStrategy:
+    def __init__(self, indent: int | None = 4) -> None:
+        self._indent = indent
+
     def build_processors(self, enable_otel: bool) -> list[Processor]:
         shared = _build_shared_processors(enable_otel, timestamp_fmt="iso", utc=True)
         return [
             *shared,
             structlog.processors.dict_tracebacks,
-            structlog.processors.JSONRenderer(),
+            structlog.processors.JSONRenderer(indent=self._indent),
         ]
 
 
@@ -119,7 +122,9 @@ class LoggerFactory:
 
     @classmethod
     def create(cls: type[Self], config: StructlogConfig) -> BoundLogger:
-        formatter: FormatterStrategy = JsonFormatterStrategy() if config.json_output else ConsoleFormatterStrategy()
+        formatter: FormatterStrategy = (
+            JsonFormatterStrategy(indent=config.json_indent) if config.json_output else ConsoleFormatterStrategy()
+        )
 
         processors = formatter.build_processors(config.enable_otel)
 

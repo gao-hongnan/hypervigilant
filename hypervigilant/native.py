@@ -30,8 +30,9 @@ class NativeLoggingConfig(BaseLoggingConfig):
 
 
 class JSONFormatter(logging.Formatter):
-    def __init__(self, datefmt: str | None = None) -> None:
+    def __init__(self, datefmt: str | None = None, indent: int | None = 4) -> None:
         super().__init__(datefmt=datefmt)
+        self._indent = indent
 
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict[str, Any] = {
@@ -52,7 +53,7 @@ class JSONFormatter(logging.Formatter):
         }
         log_data.update(extras)
 
-        return json.dumps(log_data, default=str)
+        return json.dumps(log_data, default=str, indent=self._indent)
 
 
 class LoggerFactory:
@@ -83,7 +84,7 @@ class LoggerFactory:
         handler.setLevel(LOG_LEVEL_MAP[config.level])
 
         if config.json_output:
-            handler.setFormatter(JSONFormatter(datefmt=config.date_format))
+            handler.setFormatter(JSONFormatter(datefmt=config.date_format, indent=config.json_indent))
         else:
             handler.setFormatter(logging.Formatter(fmt=config.format, datefmt=config.date_format))
 

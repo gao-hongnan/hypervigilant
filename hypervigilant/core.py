@@ -22,6 +22,7 @@ class BaseLoggingConfig(BaseModel):
 
     level: LogLevel = Field(default="INFO")
     json_output: bool = Field(default=False)
+    json_indent: int | None = Field(default=4)
     file_path: str | None = Field(default=None)
     max_bytes: int = Field(default=50_000_000, ge=1024)
     backup_count: int = Field(default=10, ge=0)
