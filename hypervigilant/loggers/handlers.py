@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Mapping
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,7 +37,7 @@ def create_stream_handler(level: LogLevel) -> logging.StreamHandler[Any]:
     return handler
 
 
-def apply_library_log_levels(library_log_levels: dict[str, LogLevel]) -> None:
+def apply_library_log_levels(library_log_levels: Mapping[str, LogLevel]) -> None:
     for lib_name, lib_level in library_log_levels.items():
         logging.getLogger(lib_name).setLevel(LOG_LEVEL_MAP[lib_level])
 

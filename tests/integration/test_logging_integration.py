@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from hypervigilant.structlog import (
+from hypervigilant.loggers.structlog import (
     LoggerFactory,
     StructlogConfig,
     bind_context,

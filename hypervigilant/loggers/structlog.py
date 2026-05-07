@@ -1,46 +1,40 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Self, cast
+from typing import Any, ClassVar, Protocol, Self, cast
 
 import structlog
-from pydantic import Field
+from pydantic import ConfigDict, Field
 from structlog.processors import CallsiteParameter
+from structlog.typing import Processor
 
-from ._factory import BaseLoggerFactory
-from ._handlers import apply_library_log_levels, create_rotating_file_handler, create_stream_handler
-from .core import LOG_LEVEL_MAP, BaseLoggingConfig
-
-if TYPE_CHECKING:
-    from structlog.types import Processor
-
+from .core import BaseLoggingConfig
+from .factory import BaseLoggerFactory
+from .handlers import create_rotating_file_handler, create_stream_handler
 
 type BoundLogger = structlog.stdlib.BoundLogger
 
 
 class StructlogConfig(BaseLoggingConfig):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True, extra="forbid")
+
     service_name: str = Field(default="hypervigilant")
-    enable_otel: bool = Field(default=False)
+    extra_processors: tuple[Processor, ...] = Field(default=())
 
 
 class FormatterStrategy(Protocol):
-    def build_processors(self, enable_otel: bool) -> list[Processor]: ...
+    def build_processors(self, extra_processors: tuple[Processor, ...]) -> list[Processor]: ...
 
 
 class OutputStrategy(Protocol):
     def create_handler(self, config: StructlogConfig) -> logging.Handler: ...
 
 
-def _get_otel_processor() -> Processor | None:
-    try:
-        from ._otel import get_otel_processor
-
-        return get_otel_processor()
-    except ImportError:
-        return None
-
-
-def _build_shared_processors(enable_otel: bool, timestamp_fmt: str, utc: bool) -> list[Processor]:
+def _build_shared_processors(
+    extra_processors: tuple[Processor, ...],
+    timestamp_fmt: str,
+    utc: bool,
+) -> list[Processor]:
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
@@ -56,12 +50,7 @@ def _build_shared_processors(enable_otel: bool, timestamp_fmt: str, utc: bool) -
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
     ]
-
-    if enable_otel:
-        otel_processor = _get_otel_processor()
-        if otel_processor is not None:
-            processors.append(otel_processor)
-
+    processors.extend(extra_processors)
     return processors
 
 
@@ -69,8 +58,8 @@ class JsonFormatterStrategy:
     def __init__(self, indent: int | None = 4) -> None:
         self._indent = indent
 
-    def build_processors(self, enable_otel: bool) -> list[Processor]:
-        shared = _build_shared_processors(enable_otel, timestamp_fmt="iso", utc=True)
+    def build_processors(self, extra_processors: tuple[Processor, ...]) -> list[Processor]:
+        shared = _build_shared_processors(extra_processors, timestamp_fmt="iso", utc=True)
         return [
             *shared,
             structlog.processors.dict_tracebacks,
@@ -79,8 +68,8 @@ class JsonFormatterStrategy:
 
 
 class ConsoleFormatterStrategy:
-    def build_processors(self, enable_otel: bool) -> list[Processor]:
-        shared = _build_shared_processors(enable_otel, timestamp_fmt="%Y-%m-%d %H:%M:%S", utc=False)
+    def build_processors(self, extra_processors: tuple[Processor, ...]) -> list[Processor]:
+        shared = _build_shared_processors(extra_processors, timestamp_fmt="%Y-%m-%d %H:%M:%S", utc=False)
         return [
             *shared,
             structlog.dev.ConsoleRenderer(),
@@ -119,7 +108,7 @@ class LoggerFactory(BaseLoggerFactory[StructlogConfig, BoundLogger]):
             JsonFormatterStrategy(indent=config.json_indent) if config.json_output else ConsoleFormatterStrategy()
         )
 
-        processors = formatter.build_processors(config.enable_otel)
+        processors = formatter.build_processors(config.extra_processors)
 
         structlog.configure(
             processors=processors,
@@ -133,11 +122,7 @@ class LoggerFactory(BaseLoggerFactory[StructlogConfig, BoundLogger]):
         new_handler = output.create_handler(config)
 
         cls._replace_handler(new_handler)
-
-        root = logging.getLogger()
-        root.setLevel(LOG_LEVEL_MAP[config.level])
-
-        apply_library_log_levels(config.library_log_levels)
+        cls._finalize_root(config.level, config.library_log_levels)
 
         structlog.contextvars.bind_contextvars(service=config.service_name)
 

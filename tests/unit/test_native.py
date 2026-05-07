@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from hypervigilant.native import (
+from hypervigilant.loggers.native import (
     JSONFormatter,
     LoggerFactory,
     NativeLoggingConfig,

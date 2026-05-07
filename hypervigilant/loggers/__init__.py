@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from .loggers.core import LOG_LEVEL_MAP, BaseLoggingConfig, LogLevel
-from .loggers.native import NativeLoggingConfig
-from .loggers.structlog import (
+from .core import LOG_LEVEL_MAP, BaseLoggingConfig, LogLevel
+from .native import NativeLoggingConfig
+from .structlog import (
     BoundLogger,
     ConsoleFormatterStrategy,
     FileOutputStrategy,

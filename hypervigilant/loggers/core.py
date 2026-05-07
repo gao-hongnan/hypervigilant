@@ -18,7 +18,7 @@ LOG_LEVEL_MAP: Final[dict[str, int]] = {
 
 
 class BaseLoggingConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     level: LogLevel = Field(default="INFO")
     json_output: bool = Field(default=False)

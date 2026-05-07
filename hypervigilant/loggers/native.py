@@ -6,9 +6,9 @@ from typing import Any, ClassVar, Final, Self
 
 from pydantic import Field
 
-from ._factory import BaseLoggerFactory
-from ._handlers import apply_library_log_levels, create_rotating_file_handler, create_stream_handler
-from .core import LOG_LEVEL_MAP, BaseLoggingConfig
+from .core import BaseLoggingConfig
+from .factory import BaseLoggerFactory
+from .handlers import create_rotating_file_handler, create_stream_handler
 
 _STANDARD_LOG_RECORD_ATTRS: Final[frozenset[str]] = frozenset(
     logging.LogRecord(
@@ -78,13 +78,8 @@ class LoggerFactory(BaseLoggerFactory[NativeLoggingConfig, logging.Logger]):
             handler.setFormatter(logging.Formatter(fmt=config.format, datefmt=config.date_format))
 
         cls._replace_handler(handler)
-
-        root = logging.getLogger()
-        root.setLevel(LOG_LEVEL_MAP[config.level])
-
-        apply_library_log_levels(config.library_log_levels)
-
-        return root
+        cls._finalize_root(config.level, config.library_log_levels)
+        return logging.getLogger()
 
 
 def configure_logging(config: NativeLoggingConfig | None = None) -> None:

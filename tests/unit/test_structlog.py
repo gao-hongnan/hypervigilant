@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog
 
-from hypervigilant.structlog import (
+from hypervigilant.loggers.structlog import (
     ConsoleFormatterStrategy,
     FileOutputStrategy,
     JsonFormatterStrategy,
@@ -21,7 +21,9 @@ from hypervigilant.structlog import (
 )
 
 if TYPE_CHECKING:
-    from hypervigilant.structlog import FormatterStrategy
+    from structlog.typing import EventDict, WrappedLogger
+
+    from hypervigilant.loggers.structlog import FormatterStrategy
 
 
 class TestStructlogConfig:
@@ -34,7 +36,7 @@ class TestStructlogConfig:
         assert config.max_bytes == 50_000_000
         assert config.backup_count == 10
         assert config.library_log_levels == {}
-        assert config.enable_otel is False
+        assert config.extra_processors == ()
 
     def test_custom_values(self) -> None:
         config = StructlogConfig(
@@ -45,7 +47,6 @@ class TestStructlogConfig:
             max_bytes=1024,
             backup_count=5,
             library_log_levels={"urllib3": "WARNING"},
-            enable_otel=True,
         )
         assert config.level == "DEBUG"
         assert config.json_output is True
@@ -54,7 +55,6 @@ class TestStructlogConfig:
         assert config.max_bytes == 1024
         assert config.backup_count == 5
         assert config.library_log_levels == {"urllib3": "WARNING"}
-        assert config.enable_otel is True
 
     @pytest.mark.parametrize(
         ("level", "expected"),
@@ -86,22 +86,19 @@ class TestStructlogConfig:
 
 class TestFormatterStrategies:
     @pytest.mark.parametrize(
-        ("strategy_cls", "renderer_name", "enable_otel"),
+        ("strategy_cls", "renderer_name"),
         [
-            (JsonFormatterStrategy, "JSONRenderer", False),
-            (JsonFormatterStrategy, "JSONRenderer", True),
-            (ConsoleFormatterStrategy, "ConsoleRenderer", False),
-            (ConsoleFormatterStrategy, "ConsoleRenderer", True),
+            (JsonFormatterStrategy, "JSONRenderer"),
+            (ConsoleFormatterStrategy, "ConsoleRenderer"),
         ],
     )
     def test_processors(
         self,
         strategy_cls: type[FormatterStrategy],
         renderer_name: str,
-        enable_otel: bool,
     ) -> None:
         strategy = strategy_cls()
-        processors = strategy.build_processors(enable_otel=enable_otel)
+        processors = strategy.build_processors(extra_processors=())
         assert len(processors) > 0
         assert any(renderer_name in str(type(p).__name__) for p in processors)
 
@@ -213,18 +210,31 @@ class TestPublicAPI:
         assert "request_id" not in ctx
 
 
-class TestOtelIntegration:
-    def test_otel_module(self) -> None:
-        from hypervigilant._otel import get_otel_processor, is_otel_available
+class TestExtraProcessors:
+    def test_default_value(self) -> None:
+        config = StructlogConfig()
+        assert config.extra_processors == ()
 
-        assert isinstance(is_otel_available(), bool)
-        processor = get_otel_processor()
-        assert processor is None or callable(processor)
+    def test_json_appends_after_builtins_before_renderer(self) -> None:
+        def marker(_logger: WrappedLogger, _name: str, event_dict: EventDict) -> EventDict:
+            return event_dict
 
-    def test_otel_processor_graceful(self) -> None:
-        strategy = JsonFormatterStrategy()
-        processors = strategy.build_processors(enable_otel=True)
-        assert len(processors) > 0
+        processors = JsonFormatterStrategy().build_processors(extra_processors=(marker,))
+        unicode_idx = next(i for i, p in enumerate(processors) if isinstance(p, structlog.processors.UnicodeDecoder))
+        marker_idx = processors.index(marker)
+        assert marker_idx > unicode_idx
+        assert isinstance(processors[-1], structlog.processors.JSONRenderer)
+        assert marker_idx < len(processors) - 1
+
+    def test_console_preserves_caller_order(self) -> None:
+        def p1(_logger: WrappedLogger, _name: str, event_dict: EventDict) -> EventDict:
+            return event_dict
+
+        def p2(_logger: WrappedLogger, _name: str, event_dict: EventDict) -> EventDict:
+            return event_dict
+
+        processors = ConsoleFormatterStrategy().build_processors(extra_processors=(p1, p2))
+        assert processors.index(p1) < processors.index(p2)
 
 
 class TestFileLogging:

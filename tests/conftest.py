@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from hypervigilant import native
-from hypervigilant.structlog import LoggerFactory
+from hypervigilant.loggers import native
+from hypervigilant.loggers.structlog import LoggerFactory
 
 if TYPE_CHECKING:
-    from hypervigilant.structlog import BoundLogger
+    from hypervigilant.loggers.structlog import BoundLogger
 
 
 class LogCapture:
@@ -80,7 +80,7 @@ def temp_log_file(tmp_path: object) -> str:
 
 @pytest.fixture
 def configured_logger() -> BoundLogger:
-    from hypervigilant.structlog import StructlogConfig, configure_logging, get_logger
+    from hypervigilant.loggers.structlog import StructlogConfig, configure_logging, get_logger
 
     configure_logging(StructlogConfig(level="DEBUG", json_output=False))
     return get_logger("test")
