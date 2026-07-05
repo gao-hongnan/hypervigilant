@@ -51,6 +51,6 @@ class TestPyproject:
     def test_version_and_no_otel_extra(self) -> None:
         pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
         data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        assert data["project"]["version"] == "21.0.0"
+        assert data["project"]["version"] == "22.0.0"
         optional = data["project"].get("optional-dependencies", {})
         assert "otel" not in optional
