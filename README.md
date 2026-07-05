@@ -10,8 +10,8 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 
 ```bash
-git commit -m "release: v15.0.0" && \
+git commit -m "release: v22.0.0" && \
     git push origin main && \
-    git tag v15.0.0 && \
-    git push origin v15.0.0
+    git tag v22.0.0 && \
+    git push origin v22.0.0
 ```

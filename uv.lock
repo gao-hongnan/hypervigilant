@@ -567,7 +567,7 @@ wheels = [
 
 [[package]]
 name = "hypervigilant"
-version = "21.0.0"
+version = "22.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
