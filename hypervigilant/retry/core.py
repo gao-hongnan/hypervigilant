@@ -22,6 +22,7 @@ from .types import (
     RetryError,
     RetryErrorCallback,
     RetryErrorClass,
+    RetryMode,
     SleepFunc,
     StopBaseT,
     T,
@@ -47,7 +48,7 @@ def build_retry_condition(
 
 @overload
 def retry(
-    mode: Literal["decorator"] = "decorator",
+    mode: Literal[RetryMode.DECORATOR] = RetryMode.DECORATOR,
     *,
     stop: StopBaseT = ...,
     wait: WaitBaseT = ...,
@@ -65,7 +66,7 @@ def retry(
 
 @overload
 def retry(
-    mode: Literal["context_manager"],
+    mode: Literal[RetryMode.CONTEXT_MANAGER],
     *,
     stop: StopBaseT = ...,
     wait: WaitBaseT = ...,
@@ -82,7 +83,7 @@ def retry(
 
 
 def retry(
-    mode: Literal["decorator", "context_manager"] = "decorator",
+    mode: RetryMode = RetryMode.DECORATOR,
     *,
     stop: StopBaseT = stop_never,
     wait: WaitBaseT = wait_none(),  # noqa: B008
@@ -109,6 +110,8 @@ def retry(
         retry_error_callback=retry_error_callback,
         **kwargs,
     )
-    if mode == "decorator":
-        return retrying.wraps
-    return retrying
+    match mode:
+        case RetryMode.DECORATOR:
+            return retrying.wraps
+        case RetryMode.CONTEXT_MANAGER:
+            return retrying

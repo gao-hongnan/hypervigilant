@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from enum import StrEnum
 from typing import Any, TypeVar
 
 from tenacity import RetryCallState, RetryError
@@ -9,6 +10,12 @@ from tenacity.stop import stop_base
 from tenacity.wait import wait_base
 
 T = TypeVar("T")
+
+
+class RetryMode(StrEnum):
+    DECORATOR = "decorator"
+    CONTEXT_MANAGER = "context_manager"
+
 
 type StopBaseT = stop_base | Callable[[RetryCallState], bool]
 type WaitBaseT = wait_base | Callable[[RetryCallState], float | int]
