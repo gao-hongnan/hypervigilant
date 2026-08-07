@@ -124,7 +124,7 @@ body:
 
         Environment:
         - OS: Ubuntu 22.04
-        - Python: 3.12.0
+        - Python: 3.13.0
         - hypervigilant: 11.0.0
         - Running in: Docker/VM/Bare metal
         - Concurrent processes: X

@@ -54,7 +54,7 @@ class LogCapture:
 
 
 @pytest.fixture
-def log_capture() -> Generator[LogCapture, None, None]:
+def log_capture() -> Generator[LogCapture]:
     capture = LogCapture()
     capture.start()
     yield capture
@@ -62,7 +62,7 @@ def log_capture() -> Generator[LogCapture, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def reset_logging() -> Generator[None, None, None]:
+def reset_logging() -> Generator[None]:
     yield
     LoggerFactory.reset()
     native.LoggerFactory.reset()

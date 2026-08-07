@@ -10,7 +10,7 @@ authors = [{name="GAO Hongnan", email="hongnangao@gmail.com"}]
 maintainers = [{name="GAO Hongnan", email="hongnangao@gmail.com"}]
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -18,64 +18,56 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Typing :: Typed",
 ]
 
 dependencies = [
-    "structlog>=24.0.0",
-    "pydantic>=2.10.0",
-    "pydantic-settings>=2.6.0",
+    "structlog>=26.1.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
     "tenacity>=9.1.4",
-    "cachetools>=5.3.0",
+    "cachetools>=7.1.7",
 ]
 
 [project.optional-dependencies]
 playground = [
-    "pydanticonf>=1.0.0",
-    "rich>=13.9.4",
+    "pydanticonf>=2.0.0",
+    "rich>=15.0.0",
 ]
 redis = [
-    "redis>=5.0.0",
+    "redis>=8.1.0",
 ]
 
 [dependency-groups]
 lint = [
-    "bandit>=1.8.6",
-    "commitizen>=4.8.3",
-    "pre-commit>=4.3.0",
-    "ruff>=0.12.11",
+    "bandit>=1.9.4",
+    "commitizen>=4.17.0",
+    "pre-commit>=4.6.1",
+    "ruff>=0.16.1",
 ]
 
 type = [
-    "mypy>=1.17.1",
-    "pyright>=1.1.405",
-    "typeguard>=4.4.4",
-    "redis>=5.0.0",
+    "mypy>=2.3.0",
+    "pyright>=1.1.411",
+    "typeguard>=4.6.0",
+    "redis>=8.1.0",
 ]
 
 test = [
-    "coverage>=7.10.6",
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.1.0",
-    "pytest-mock>=3.14.1",
-    "pytest-xdist>=3.6.1",
-    "pytest-cov>=6.0.0",
-    "redis>=5.0.0",
-    "testcontainers[redis]>=4.12.0",
+    "coverage>=7.15.4",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-mock>=3.15.1",
+    "pytest-xdist>=3.8.0",
+    "pytest-cov>=7.1.0",
+    "redis>=8.1.0",
+    "testcontainers[redis]>=4.15.0",
 ]
 
 docs = [
-    "jupyter-book==1.0.4.post1",
-    "myst-nb",
-    "sphinx-copybutton",
-    "sphinxcontrib-mermaid",
-    "sphinx-proof",
-    "sphinxcontrib-bibtex",
-    "sphinx-togglebutton",
-    "sphinx-design",
+    "jupyter-book>=2.1.6",
 ]
 
 dev = [
