@@ -98,24 +98,28 @@ def test_verifying_ssl_builds_a_real_context(tmp_path: Path) -> None:
     A verifying mode must produce a context that actually authenticates.
     """
     ca = tmp_path / "ca.pem"
-    ca.write_bytes(
-        ssl.get_default_verify_paths().cafile and Path(ssl.get_default_verify_paths().cafile).read_bytes() or b""
-    )
-    context = _ssl_connect_argument(SSLConfig(mode=SSLMode.VERIFY_FULL, root_cert=ca))
-    assert isinstance(context, ssl.SSLContext)
-    assert context.check_hostname is True
-    assert context.verify_mode is ssl.CERT_REQUIRED
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    with patch("hypervigilant.db.engine.ssl.create_default_context", return_value=context) as create_context:
+        result = _ssl_connect_argument(SSLConfig(mode=SSLMode.VERIFY_FULL, root_cert=ca))
+
+    assert result is context
+    assert result.check_hostname is True
+    assert result.verify_mode is ssl.CERT_REQUIRED
+    create_context.assert_called_once_with(cafile=str(ca))
 
 
 def test_verify_ca_does_not_check_hostname(tmp_path: Path) -> None:
     ca = tmp_path / "ca.pem"
-    ca.write_bytes(
-        ssl.get_default_verify_paths().cafile and Path(ssl.get_default_verify_paths().cafile).read_bytes() or b""
-    )
-    context = _ssl_connect_argument(SSLConfig(mode=SSLMode.VERIFY_CA, root_cert=ca))
-    assert isinstance(context, ssl.SSLContext)
-    assert context.check_hostname is False
-    assert context.verify_mode is ssl.CERT_REQUIRED
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    with patch("hypervigilant.db.engine.ssl.create_default_context", return_value=context) as create_context:
+        result = _ssl_connect_argument(SSLConfig(mode=SSLMode.VERIFY_CA, root_cert=ca))
+
+    assert result is context
+    assert result.check_hostname is False
+    assert result.verify_mode is ssl.CERT_REQUIRED
+    create_context.assert_called_once_with(cafile=str(ca))
 
 
 def test_connect_args_carry_server_settings_and_timeouts() -> None:
