@@ -24,16 +24,16 @@ import inspect
 from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
-from hypervigilant.circuit_breaker.config import BreakerConfig
-from hypervigilant.circuit_breaker.events import (
+from .config import BreakerConfig
+from .events import (
     BreakerCreated,
     BreakerEvent,
     BreakerFailed,
     BreakerRecovered,
     BreakerStateChanged,
 )
-from hypervigilant.circuit_breaker.runtime.asyncio import AsyncBreakerRegistry
-from hypervigilant.circuit_breaker.stores.base import BreakerStore
+from .runtime.asyncio import AsyncBreakerRegistry
+from .stores.base import BreakerStore
 
 __all__ = ["circuit_breaker"]
 
@@ -127,7 +127,7 @@ def circuit_breaker(
     Returns
     -------
     AsyncBreakerRegistry
-        Initialised registry. Caller MUST ``await registry.initialize()``
+        Initialised registry. Caller MUST ``await registry.ainitialize()``
         before first use when ``uow`` is a :class:`RedisStore`.
 
     Raises

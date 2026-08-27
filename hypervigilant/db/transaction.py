@@ -19,10 +19,10 @@ the domain believes is atomic. No test catches that, because the retry looks lik
 succeeded.
 
 So the goal is not to make retry-inside-a-transaction discouraged. It is to make it
-unwritable, and :func:`transactional` does that structurally:
+unwritable, and :func:`atransactional` does that structurally:
 
 1. The first parameter is a *factory*, not a scope. You cannot hand
-   :func:`transactional` a started transaction, so a retry cannot reuse a poisoned
+   :func:`atransactional` a started transaction, so a retry cannot reuse a poisoned
    session -- each attempt calls the factory, which checks out a connection and
    issues ``BEGIN``.
 2. ``work`` receives its session as an argument. There is no session in an enclosing
@@ -57,29 +57,29 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy.exc import SQLAlchemyError
 from tenacity import stop_after_attempt, wait_random_exponential
 
-from hypervigilant.db.errors import DatabaseError, DatabaseUnavailableError, TransactionConflictError, translate_error
-from hypervigilant.retry import RetryConfig, RetryMode, build_retry_condition, retry
+from ..retry import RetryConfig, RetryMode, build_retry_condition, retry
+from .errors import DatabaseError, DatabaseUnavailableError, TransactionConflictError, translate_error
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
     from tenacity import AsyncRetrying
     from tenacity.retry import RetryBaseT
 
-    from hypervigilant.db.types import SessionFactory
+    from .types import SessionFactory
 
 __all__ = [
     "CONNECTION_RETRY",
     "SERIALIZATION_RETRY",
     "ScopeFactory",
     "TransactionScope",
-    "transactional",
-    "unit_of_work",
+    "atransactional",
+    "aunit_of_work",
 ]
 
 type TransactionScope = AbstractAsyncContextManager[AsyncSession]
 """An open transaction yielding its session.
 
-Deliberately the stdlib type rather than a new Protocol. :func:`unit_of_work`
+Deliberately the stdlib type rather than a new Protocol. :func:`aunit_of_work`
 satisfies it structurally -- and so, notably, does SQLAlchemy's own
 ``async_sessionmaker.begin()`` and any test double. Naming a Protocol here would have
 been speculative generality over a shape the stdlib already spells.
@@ -148,7 +148,7 @@ def _retrying(policy: RetryConfig) -> AsyncRetrying:
 
 
 @asynccontextmanager
-async def unit_of_work(factory: SessionFactory, *, operation: str) -> AsyncGenerator[AsyncSession]:
+async def aunit_of_work(factory: SessionFactory, *, operation: str) -> AsyncGenerator[AsyncSession]:
     """Open a session with a transaction: commit on clean exit, roll back on error.
 
     Thin on purpose -- ``async_sessionmaker.begin()`` does the session and transaction
@@ -171,7 +171,7 @@ async def unit_of_work(factory: SessionFactory, *, operation: str) -> AsyncGener
     Examples
     --------
     >>> import inspect
-    >>> inspect.isasyncgenfunction(unit_of_work.__wrapped__)
+    >>> inspect.isasyncgenfunction(aunit_of_work.__wrapped__)
     True
     """
     try:
@@ -181,7 +181,7 @@ async def unit_of_work(factory: SessionFactory, *, operation: str) -> AsyncGener
         raise translate_error(exc, operation=operation) from exc
 
 
-async def transactional[ResultT](
+async def atransactional[ResultT](
     make_scope: ScopeFactory,
     work: Callable[[AsyncSession], Awaitable[ResultT]],
     *,
@@ -212,7 +212,7 @@ async def transactional[ResultT](
     Examples
     --------
     >>> import inspect
-    >>> list(inspect.signature(transactional).parameters)[0]
+    >>> list(inspect.signature(atransactional).parameters)[0]
     'make_scope'
     >>> SERIALIZATION_RETRY.retry_on_exceptions
     (<class 'hypervigilant.db.errors.TransactionConflictError'>,)
@@ -221,5 +221,5 @@ async def transactional[ResultT](
         with attempt:
             async with make_scope() as session:
                 return await work(session)
-    message = "transactional exhausted its retry loop without an outcome"
+    message = "atransactional exhausted its retry loop without an outcome"
     raise RuntimeError(message)

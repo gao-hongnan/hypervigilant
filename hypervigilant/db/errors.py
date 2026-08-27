@@ -113,7 +113,7 @@ class DatabaseError(Exception):
     ----------
     retryable
         Whether re-running the failed unit of work could succeed. Read by
-        :func:`hypervigilant.db.transaction.transactional`; never inferred from the
+        :func:`hypervigilant.db.transaction.atransactional`; never inferred from the
         class hierarchy.
     """
 

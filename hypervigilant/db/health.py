@@ -1,6 +1,6 @@
 """Readiness probing that answers correctly under saturation.
 
-The ordering here is the whole design. :meth:`PoolHealthProbe.check` reads pool
+The ordering here is the whole design. :meth:`PoolHealthProbe.acheck` reads pool
 statistics **first**, without checking out a connection. A saturated pool is already
 the answer, and queueing the probe behind real traffic to discover it is how a
 readiness endpoint comes to report "healthy" for ``pool_timeout`` seconds after the
@@ -89,7 +89,7 @@ class HealthReport:
 class HealthProbe(Protocol):
     """Reports whether the database is usable."""
 
-    async def check(self) -> HealthReport:
+    async def acheck(self) -> HealthReport:
         """Probe, without raising. Failure is reported in the return value."""
         ...
 
@@ -126,7 +126,7 @@ class PoolHealthProbe:
             saturated=checked_out >= size + max(pool._max_overflow, 0),  # noqa: SLF001
         )
 
-    async def check(self) -> HealthReport:
+    async def acheck(self) -> HealthReport:
         """Return the current readiness answer.
 
         Never raises: a probe that raises turns a readiness endpoint into a 500 and
@@ -135,7 +135,7 @@ class PoolHealthProbe:
         Examples
         --------
         >>> import inspect
-        >>> inspect.iscoroutinefunction(PoolHealthProbe.check)
+        >>> inspect.iscoroutinefunction(PoolHealthProbe.acheck)
         True
         """
         stats = self._pool_stats()

@@ -17,8 +17,8 @@ Examples
 True
 """
 
-from hypervigilant.circuit_breaker.stores.base import BreakerStore
-from hypervigilant.circuit_breaker.stores.memory import InMemoryStore
-from hypervigilant.circuit_breaker.stores.redis import RedisStore
+from .base import BreakerStore
+from .memory import InMemoryStore
+from .redis import RedisStore
 
 __all__ = ["BreakerStore", "InMemoryStore", "RedisStore"]

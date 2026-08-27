@@ -18,19 +18,19 @@ Examples
 5
 """
 
-from hypervigilant.circuit_breaker.clock import (
+from .clock import (
     Clock,
     FakeClock,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     MonotonicClock,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     SystemClock,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
-from hypervigilant.circuit_breaker.config import BreakerConfig, StorageFailurePolicy
-from hypervigilant.circuit_breaker.core import circuit_breaker
-from hypervigilant.circuit_breaker.errors import (
+from .config import BreakerConfig, StorageFailurePolicy
+from .core import circuit_breaker
+from .errors import (
     BreakerOpenError,
     CircuitStorageError,
 )
-from hypervigilant.circuit_breaker.events import (
+from .events import (
     BreakerCreated,
     BreakerEvent,
     BreakerFailed,
@@ -39,27 +39,27 @@ from hypervigilant.circuit_breaker.events import (
     EventDispatcher,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     EventHandler,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
-from hypervigilant.circuit_breaker.hooks import (
+from .hooks import (
     HookFn,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     NoOpObserver,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     StoreObserver,
 )
-from hypervigilant.circuit_breaker.policy import (
+from .policy import (
     AllowCall,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     Decision,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     ProbeCall,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     RejectCall,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
-from hypervigilant.circuit_breaker.runtime import (
+from .runtime import (
     AsyncBreakerRegistry,
     AsyncCircuitBreaker,
 )
-from hypervigilant.circuit_breaker.state import (
+from .state import (
     BreakerState,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     BreakerStatus,
     Snapshot,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
-from hypervigilant.circuit_breaker.stores import BreakerStore, InMemoryStore, RedisStore
+from .stores import BreakerStore, InMemoryStore, RedisStore
 
 __all__ = [
     "AsyncBreakerRegistry",

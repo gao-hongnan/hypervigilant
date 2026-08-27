@@ -5,7 +5,7 @@ and the runtime layer:
 
 * :class:`Snapshot` -- the atomic state of a circuit at a point in time.
 * :class:`BreakerStatus` -- the public-facing snapshot returned by
-  ``await breaker.snapshot()``; identical to :class:`Snapshot` plus the
+  ``await breaker.asnapshot()``; identical to :class:`Snapshot` plus the
   computed ``retry_after`` window.
 
 Both dataclasses are frozen with ``slots=True`` so they remain hashable, cheap
@@ -156,7 +156,7 @@ class Snapshot:
 
 @dataclass(frozen=True, slots=True)
 class BreakerStatus:
-    """Public-facing snapshot returned by ``await breaker.snapshot()``.
+    """Public-facing snapshot returned by ``await breaker.asnapshot()``.
 
     Adds the ``retry_after`` window to the fields of :class:`Snapshot` so
     callers can decide how long to wait before issuing the next probe.

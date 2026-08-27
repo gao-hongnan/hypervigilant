@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 async def atomicity_store(redis_url: str) -> "AsyncGenerator[RedisStore]":
     """A ``RedisStore`` with a generous pool tuned for the 1,000-fan-out test."""
     store = RedisStore.from_url(redis_url, pool_max=200)
-    await store.initialize()
+    await store.ainitialize()
     yield store
     await store.aclose()
 
@@ -64,7 +64,7 @@ async def test_record_failure_strict_atomicity_under_concurrent_load(
     """
     name = "atomicity_test"
     threshold = 10
-    pre = await atomicity_store.peek(name) or Snapshot(
+    pre = await atomicity_store.apeek(name) or Snapshot(
         name=name,
         state="closed",
         failure_count=0,
@@ -72,7 +72,7 @@ async def test_record_failure_strict_atomicity_under_concurrent_load(
         generation=0,
     )
     coros = [
-        atomicity_store.record_failure(
+        atomicity_store.arecord_failure(
             name,
             threshold=threshold,
             ttl_seconds=30.0,
@@ -80,7 +80,7 @@ async def test_record_failure_strict_atomicity_under_concurrent_load(
         for _ in range(1000)
     ]
     await asyncio.gather(*coros)
-    post = await atomicity_store.peek(name)
+    post = await atomicity_store.apeek(name)
     assert post is not None
     assert post.state == "opened"
     assert post.failure_count == threshold
@@ -99,7 +99,7 @@ async def test_concurrent_failures_below_threshold_stay_closed(
     """
     name = "below_threshold"
     threshold = 10
-    pre = await atomicity_store.peek(name) or Snapshot(
+    pre = await atomicity_store.apeek(name) or Snapshot(
         name=name,
         state="closed",
         failure_count=0,
@@ -107,7 +107,7 @@ async def test_concurrent_failures_below_threshold_stay_closed(
         generation=0,
     )
     coros = [
-        atomicity_store.record_failure(
+        atomicity_store.arecord_failure(
             name,
             threshold=threshold,
             ttl_seconds=30.0,
@@ -115,7 +115,7 @@ async def test_concurrent_failures_below_threshold_stay_closed(
         for _ in range(5)
     ]
     await asyncio.gather(*coros)
-    post = await atomicity_store.peek(name)
+    post = await atomicity_store.apeek(name)
     assert post is not None
     assert post.state == "closed"
     assert post.failure_count == 5

@@ -32,8 +32,8 @@ from hypervigilant.circuit_breaker.stores.memory import InMemoryStore
 async def test_get_returns_same_instance_for_same_name() -> None:
     """Identity Map: ``get(x)`` followed by ``get(x)`` returns the same object."""
     reg = AsyncBreakerRegistry()
-    a = await reg.get("x")
-    b = await reg.get("x")
+    a = await reg.aget("x")
+    b = await reg.aget("x")
     assert a is b
 
 
@@ -41,8 +41,8 @@ async def test_get_returns_same_instance_for_same_name() -> None:
 async def test_get_returns_distinct_instances_for_distinct_names() -> None:
     """Different names map to different breakers."""
     reg = AsyncBreakerRegistry()
-    a = await reg.get("x")
-    b = await reg.get("y")
+    a = await reg.aget("x")
+    b = await reg.aget("y")
     assert a is not b
     assert a.name == "x"
     assert b.name == "y"
@@ -52,7 +52,7 @@ async def test_get_returns_distinct_instances_for_distinct_names() -> None:
 async def test_async_with_breaker_runs_body_when_closed() -> None:
     """Happy-path: a closed breaker permits the body."""
     reg = AsyncBreakerRegistry()
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     entered = False
     async with breaker:
         entered = True
@@ -63,12 +63,12 @@ async def test_async_with_breaker_runs_body_when_closed() -> None:
 async def test_failure_in_body_records_via_breaker() -> None:
     """A failure inside the body is recorded as a circuit failure."""
     reg = AsyncBreakerRegistry(default_config=BreakerConfig(threshold=2))
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     with pytest.raises(RuntimeError):
         async with breaker:
             msg = "oops"
             raise RuntimeError(msg)
-    status = await breaker.snapshot()
+    status = await breaker.asnapshot()
     assert status.failure_count == 1
 
 
@@ -76,7 +76,7 @@ async def test_failure_in_body_records_via_breaker() -> None:
 async def test_threshold_crossing_raises_breaker_open_error_on_next_acquire() -> None:
     """After threshold failures the next acquire raises ``BreakerOpenError``."""
     reg = AsyncBreakerRegistry(default_config=BreakerConfig(threshold=2))
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     for _ in range(2):
         with pytest.raises(RuntimeError):
             async with breaker:
@@ -96,13 +96,13 @@ async def test_excluded_exception_does_not_count_as_failure() -> None:
     reg = AsyncBreakerRegistry(
         default_config=BreakerConfig(threshold=2, exclude=(ValueError,)),
     )
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     for _ in range(5):
         with pytest.raises(ValueError, match="filter"):
             async with breaker:
                 msg = "filter"
                 raise ValueError(msg)
-    status = await breaker.snapshot()
+    status = await breaker.asnapshot()
     assert status.failure_count == 0
     assert status.state == "closed"
 
@@ -111,11 +111,11 @@ async def test_excluded_exception_does_not_count_as_failure() -> None:
 async def test_cancelled_error_propagates_without_recording_failure() -> None:
     """``asyncio.CancelledError`` is treated as cooperative shutdown, not a failure."""
     reg = AsyncBreakerRegistry()
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     with pytest.raises(asyncio.CancelledError):
         async with breaker:
             raise asyncio.CancelledError
-    status = await breaker.snapshot()
+    status = await breaker.asnapshot()
     assert status.failure_count == 0
 
 
@@ -146,7 +146,7 @@ async def test_on_subscribes_to_breaker_state_changed() -> None:
         seen.append((evt.name, evt.from_state, evt.to_state))
 
     reg.on(BreakerStateChanged, handler)
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     for _ in range(2):
         with pytest.raises(RuntimeError):
             async with breaker:
@@ -162,8 +162,8 @@ async def test_breaker_created_event_fires_on_first_get() -> None:
     reg = AsyncBreakerRegistry()
     received: list[str] = []
     reg.on(BreakerCreated, lambda evt: received.append(evt.name))
-    await reg.get("svc")
-    await reg.get("svc")  # second call MUST NOT re-emit.
+    await reg.aget("svc")
+    await reg.aget("svc")  # second call MUST NOT re-emit.
     await reg.aclose()
     assert received == ["svc"]
 
@@ -174,7 +174,7 @@ async def test_breaker_failed_event_fires_on_failure() -> None:
     reg = AsyncBreakerRegistry(default_config=BreakerConfig(threshold=5))
     failed: list[BreakerFailed] = []
     reg.on(BreakerFailed, failed.append)
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     with pytest.raises(RuntimeError):
         async with breaker:
             msg = "oops"
@@ -197,7 +197,7 @@ async def test_breaker_recovered_event_fires_after_half_open_success() -> None:
     recovered: list[BreakerRecovered] = []
     reg.on(BreakerRecovered, recovered.append)
 
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     for _ in range(2):
         with pytest.raises(RuntimeError):
             async with breaker:
@@ -213,10 +213,10 @@ async def test_breaker_recovered_event_fires_after_half_open_success() -> None:
 
 @pytest.mark.unit
 async def test_snapshot_returns_breaker_status_value_object() -> None:
-    """``await breaker.snapshot()`` returns an immutable ``BreakerStatus``."""
+    """``await breaker.asnapshot()`` returns an immutable ``BreakerStatus``."""
     reg = AsyncBreakerRegistry()
-    breaker = await reg.get("svc")
-    status = await breaker.snapshot()
+    breaker = await reg.aget("svc")
+    status = await breaker.asnapshot()
     assert isinstance(status, BreakerStatus)
     assert status.name == "svc"
     assert status.state == "closed"
@@ -226,7 +226,7 @@ async def test_snapshot_returns_breaker_status_value_object() -> None:
 async def test_async_circuit_breaker_has_no_live_state_attribute() -> None:
     """FR-013: the breaker MUST NOT expose a live ``state`` attribute."""
     reg = AsyncBreakerRegistry()
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     assert isinstance(breaker, AsyncCircuitBreaker)
     assert not hasattr(breaker, "state")
     assert not hasattr(breaker, "failure_count")
@@ -241,7 +241,7 @@ async def test_async_circuit_breaker_has_no_live_state_attribute() -> None:
 async def test_registry_supports_async_with_lifespan() -> None:
     """H7: ``async with AsyncBreakerRegistry(...) as reg:`` is the canonical lifespan."""
     async with AsyncBreakerRegistry(default_config=BreakerConfig(threshold=2)) as reg:
-        breaker = await reg.get("svc")
+        breaker = await reg.aget("svc")
         async with breaker:
             pass
 
@@ -286,7 +286,7 @@ async def test_dispatcher_handler_timeout_isolates_hung_handlers() -> None:
         await asyncio.sleep(10.0)
 
     dispatcher.register(BreakerCreated, slow_handler)
-    await dispatcher.dispatch(BreakerCreated(name="x", config_repr="<...>"))
+    await dispatcher.adispatch(BreakerCreated(name="x", config_repr="<...>"))
     await dispatcher.aclose()
 
     assert errors, "Expected handler timeout to be reported via observer.on_error."
@@ -311,7 +311,7 @@ async def test_retry_after_decreases_as_time_elapses() -> None:
         default_config=BreakerConfig(threshold=2, ttl=30.0),
         store=store,
     )
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
 
     for _ in range(2):
         with pytest.raises(RuntimeError):
@@ -319,20 +319,20 @@ async def test_retry_after_decreases_as_time_elapses() -> None:
                 msg = "trip"
                 raise RuntimeError(msg)
 
-    status_at_open = await breaker.snapshot()
+    status_at_open = await breaker.asnapshot()
     assert status_at_open.state == "opened"
     assert status_at_open.retry_after == pytest.approx(30.0)
 
     clock.advance(5.0)
-    status_after_5s = await breaker.snapshot()
+    status_after_5s = await breaker.asnapshot()
     assert status_after_5s.retry_after == pytest.approx(25.0)
 
     clock.advance(20.0)
-    status_after_25s = await breaker.snapshot()
+    status_after_25s = await breaker.asnapshot()
     assert status_after_25s.retry_after == pytest.approx(5.0)
 
     clock.advance(10.0)
-    status_after_ttl = await breaker.snapshot()
+    status_after_ttl = await breaker.asnapshot()
     assert status_after_ttl.retry_after == pytest.approx(0.0)
 
 
@@ -350,7 +350,7 @@ async def test_store_acquire_returns_decision_and_snapshot_tuple() -> None:
     of an instance attribute.
     """
     store = InMemoryStore()
-    result = await store.acquire("svc", threshold=5, ttl_seconds=30.0, lease_seconds=5.0)
+    result = await store.aacquire("svc", threshold=5, ttl_seconds=30.0, lease_seconds=5.0)
     assert isinstance(result, tuple)
     decision, snapshot = result
     assert isinstance(decision, AllowCall)
@@ -375,13 +375,13 @@ async def test_aenter_does_not_call_peek() -> None:
             super().__init__()
             object.__setattr__(self, "peek_count", 0)
 
-        async def peek(self, name: str) -> Snapshot | None:
+        async def apeek(self, name: str) -> Snapshot | None:
             self.peek_count += 1
-            return await super().peek(name)
+            return await super().apeek(name)
 
     store = CountingStore()
     reg = AsyncBreakerRegistry(store=store)
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
 
     pre = store.peek_count
     async with breaker:
@@ -407,7 +407,7 @@ async def test_aexit_preserves_user_exception_when_record_failure_raises() -> No
     from hypervigilant.circuit_breaker.errors import CircuitStorageError
 
     class StorageDownStore(InMemoryStore):
-        async def record_failure(
+        async def arecord_failure(
             self,
             name: str,
             *,
@@ -423,7 +423,7 @@ async def test_aexit_preserves_user_exception_when_record_failure_raises() -> No
         default_config=BreakerConfig(threshold=2),
         store=StorageDownStore(),
     )
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     with pytest.raises(RuntimeError, match="downstream-500"):
         async with breaker:
             msg = "downstream-500"
@@ -439,7 +439,7 @@ async def test_aexit_surfaces_storage_failure_when_body_succeeded() -> None:
     from hypervigilant.circuit_breaker.errors import CircuitStorageError
 
     class StorageDownOnSuccessStore(InMemoryStore):
-        async def record_success(
+        async def arecord_success(
             self,
             name: str,
             *,
@@ -450,7 +450,7 @@ async def test_aexit_surfaces_storage_failure_when_body_succeeded() -> None:
             raise CircuitStorageError(msg)
 
     reg = AsyncBreakerRegistry(store=StorageDownOnSuccessStore())
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
     with pytest.raises(CircuitStorageError, match="record_success"):
         async with breaker:
             pass
@@ -480,7 +480,7 @@ async def test_concurrent_aenter_does_not_drop_state_change_event() -> None:
     b_finished_aenter = asyncio.Event()
 
     class CoordinatedStore(InMemoryStore):
-        async def record_failure(
+        async def arecord_failure(
             self,
             name: str,
             *,
@@ -488,7 +488,7 @@ async def test_concurrent_aenter_does_not_drop_state_change_event() -> None:
             ttl_seconds: float,
             counting: CountingPolicy | None = None,
         ) -> Snapshot:
-            snap = await super().record_failure(
+            snap = await super().arecord_failure(
                 name,
                 threshold=threshold,
                 ttl_seconds=ttl_seconds,
@@ -503,7 +503,7 @@ async def test_concurrent_aenter_does_not_drop_state_change_event() -> None:
         store=CoordinatedStore(),
     )
     reg.on(BreakerStateChanged, state_changes.append)
-    breaker = await reg.get("svc")
+    breaker = await reg.aget("svc")
 
     async def task_a() -> None:
         with pytest.raises(RuntimeError):
@@ -544,7 +544,7 @@ async def test_registry_rate_based_breaker_trips_and_reports_failure_rate() -> N
     )
     seen_rates: list[float | None] = []
     reg.on(BreakerFailed, lambda e: seen_rates.append(e.failure_rate))
-    breaker = await reg.get("upstream")
+    breaker = await reg.aget("upstream")
 
     class Boom(Exception):
         pass
@@ -554,7 +554,7 @@ async def test_registry_rate_based_breaker_trips_and_reports_failure_rate() -> N
             async with breaker:
                 raise Boom("nope")
 
-    status = await breaker.snapshot()
+    status = await breaker.asnapshot()
     assert status.state == "opened"
     # the first three failures (closed, windowed) each carry a rate >= 0.5
     assert any(r is not None and r >= 0.5 for r in seen_rates)

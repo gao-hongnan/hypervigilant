@@ -7,7 +7,7 @@ anyway, because :class:`Database` satisfies both
 :class:`~hypervigilant.db.session.SessionProvider` and
 :class:`~hypervigilant.db.health.HealthProbe` structurally.
 
-Lifecycle vocabulary is ``initialize`` / ``aclose``, matching
+Lifecycle vocabulary is ``ainitialize`` / ``aclose``, matching
 :class:`hypervigilant.circuit_breaker.AsyncBreakerRegistry` rather than obskit's sync
 ``setup`` / ``shutdown`` :class:`LifecycleStage`. ``AsyncEngine.dispose()`` is a
 coroutine and the startup probe is I/O, so the sync protocol could only be satisfied
@@ -35,21 +35,21 @@ from typing import TYPE_CHECKING, Self
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from hypervigilant.db.engine import build_engine, build_session_factory
-from hypervigilant.db.errors import translate_error
-from hypervigilant.db.health import PoolHealthProbe
-from hypervigilant.db.session import session_scope
-from hypervigilant.db.transaction import unit_of_work
-from hypervigilant.loggers import get_logger
+from ...loggers import get_logger
+from ..engine import build_engine, build_session_factory
+from ..errors import translate_error
+from ..health import PoolHealthProbe
+from ..session import asession_scope
+from ..transaction import aunit_of_work
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
     from sqlmodel.ext.asyncio.session import AsyncSession
 
-    from hypervigilant.db.config import DBConfig
-    from hypervigilant.db.health import HealthProbe
-    from hypervigilant.db.transaction import TransactionScope
-    from hypervigilant.db.types import SessionFactory
+    from ..config import DBConfig
+    from ..health import HealthProbe
+    from ..transaction import TransactionScope
+    from ..types import SessionFactory
 
 __all__ = ["Database"]
 
@@ -79,7 +79,7 @@ class Database:
     >>> db.engine
     Traceback (most recent call last):
         ...
-    RuntimeError: Database.initialize() has not been awaited; there is no engine yet.
+    RuntimeError: Database.ainitialize() has not been awaited; there is no engine yet.
 
     The repr never renders the URL, so a credential cannot reach a log through it:
 
@@ -130,11 +130,11 @@ class Database:
         Raises
         ------
         RuntimeError
-            Before :meth:`initialize`. Returning ``None`` would push an ``is None``
+            Before :meth:`ainitialize`. Returning ``None`` would push an ``is None``
             check into every caller.
         """
         if self._engine is None:
-            reason = "Database.initialize() has not been awaited; there is no engine yet."
+            reason = "Database.ainitialize() has not been awaited; there is no engine yet."
             raise RuntimeError(reason)
         return self._engine
 
@@ -142,11 +142,11 @@ class Database:
     def health(self) -> HealthProbe:
         """The readiness probe bound to this engine."""
         if self._health is None:
-            reason = "Database.initialize() has not been awaited; there is no health probe yet."
+            reason = "Database.ainitialize() has not been awaited; there is no health probe yet."
             raise RuntimeError(reason)
         return self._health
 
-    async def initialize(self) -> None:
+    async def ainitialize(self) -> None:
         """Build the engine and prove the database is reachable.
 
         Idempotent under a lock, so concurrent startup paths cannot race two engines
@@ -192,7 +192,7 @@ class Database:
             logger.info("database ready", db=self._config.model_dump(mode="json"))
 
     async def aclose(self) -> None:
-        """Dispose the engine. Idempotent, and safe before :meth:`initialize`."""
+        """Dispose the engine. Idempotent, and safe before :meth:`ainitialize`."""
         async with self._lock:
             if self._engine is None:
                 return
@@ -221,7 +221,7 @@ class Database:
 
     def _factory(self) -> SessionFactory:
         if self._sessions is None:
-            reason = "Database.initialize() has not been awaited; there is no session factory yet."
+            reason = "Database.ainitialize() has not been awaited; there is no session factory yet."
             raise RuntimeError(reason)
         return self._sessions
 
@@ -231,7 +231,7 @@ class Database:
         For reads. Writes go through :meth:`begin` so the transaction boundary is
         visible at the call site.
         """
-        return session_scope(self._factory(), operation="db.session")
+        return asession_scope(self._factory(), operation="db.session")
 
     def reader_session(self) -> AbstractAsyncContextManager[AsyncSession]:
         """Open a read-only session against the reader endpoint.
@@ -253,7 +253,7 @@ class Database:
         factory = self._reader_sessions
         if factory is None:
             return self.session()
-        return session_scope(factory, operation="db.reader_session")
+        return asession_scope(factory, operation="db.reader_session")
 
     def begin(self) -> TransactionScope:
         """Start a transaction.
@@ -264,14 +264,14 @@ class Database:
         for the first write in an otherwise read-shaped unit of work.
 
         Pass this method *uncalled* to
-        :func:`~hypervigilant.db.transaction.transactional` -- it is the
+        :func:`~hypervigilant.db.transaction.atransactional` -- it is the
         :data:`~hypervigilant.db.transaction.ScopeFactory` that makes retrying a
         poisoned session inexpressible.
         """
-        return unit_of_work(self._factory(), operation="db.transaction")
+        return aunit_of_work(self._factory(), operation="db.transaction")
 
     async def __aenter__(self) -> Self:
-        await self.initialize()
+        await self.ainitialize()
         return self
 
     async def __aexit__(

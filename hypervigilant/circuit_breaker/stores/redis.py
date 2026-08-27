@@ -6,7 +6,7 @@ lives at ``cb:{name}:probe``. Both keys are hash-tagged so they share a
 Cluster slot and Lua scripts can operate on them atomically.
 
 State transitions are dispatched via three Lua scripts loaded at
-:meth:`initialize` (``acquire.lua``, ``record_failure.lua``,
+:meth:`ainitialize` (``acquire.lua``, ``record_failure.lua``,
 ``record_success.lua``); EVALSHA is used for every call with a single
 ``NOSCRIPT`` reload-and-retry. ``redis.call('TIME')`` provides the wall
 clock inside Lua, eliminating cross-worker clock skew.
@@ -37,22 +37,22 @@ from typing import TYPE_CHECKING, Any, cast
 
 from cachetools import TTLCache
 
-from hypervigilant.circuit_breaker.breaker import project_decision
-from hypervigilant.circuit_breaker.clock import Clock, SystemClock
-from hypervigilant.circuit_breaker.config import (
+from ..breaker import project_decision
+from ..clock import Clock, SystemClock
+from ..config import (
     BreakerConfig,
     CountingPolicy,
     StorageFailurePolicy,
 )
-from hypervigilant.circuit_breaker.errors import CircuitStorageError
-from hypervigilant.circuit_breaker.hooks import NoOpObserver, StoreObserver
-from hypervigilant.circuit_breaker.policy import (
+from ..errors import CircuitStorageError
+from ..hooks import NoOpObserver, StoreObserver
+from ..policy import (
     AllowCall,
     Decision,
     ProbeCall,
     RejectCall,
 )
-from hypervigilant.circuit_breaker.state import Snapshot, WindowSummary
+from ..state import Snapshot, WindowSummary
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -103,7 +103,7 @@ def _snapshot_from_lua_payload(
     """Materialise a :class:`Snapshot` from a Lua-script return payload.
 
     The Lua scripts return a flat array ``[state, fc, oa, gen]`` (a five-element
-    variant for ``acquire`` appends the decision tag); the windowed ``record_*``
+    variant for ``aacquire`` appends the decision tag); the windowed ``arecord_*``
     scripts append ``win_failures, win_total``. Every element arrives as a Redis
     bulk string, decoded to ``bytes`` or ``str``; we normalise via
     :func:`_decode` and narrow the state string to the ``BreakerState`` literal
@@ -337,7 +337,7 @@ class RedisStore:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    async def initialize(self) -> None:
+    async def ainitialize(self) -> None:
         """Load every Lua script via ``SCRIPT LOAD`` and cache its SHA.
 
         Idempotent — the second call is a no-op. Concurrent first-time
@@ -347,10 +347,10 @@ class RedisStore:
             if self._initialized:
                 return
             self._lua_source = {tag: (_LUA_DIR / filename).read_text(encoding="utf-8") for tag, filename in _LUA_FILES}
-            await self._load_scripts()
+            await self._aload_scripts()
             self._initialized = True
 
-    async def _load_scripts(self) -> None:
+    async def _aload_scripts(self) -> None:
         """Issue ``SCRIPT LOAD`` for every script and remember the SHAs.
 
         Wraps ``TimeoutError`` and ``RedisError`` into
@@ -403,7 +403,7 @@ class RedisStore:
     # Public interface (asymmetric BreakerStore Protocol)
     # ------------------------------------------------------------------
 
-    async def acquire(
+    async def aacquire(
         self,
         name: str,
         *,
@@ -412,7 +412,7 @@ class RedisStore:
         lease_seconds: float,
     ) -> tuple[Decision, Snapshot]:
         """Project a Decision and (atomically) transition OPEN → HALF_OPEN if TTL elapsed."""
-        await self.initialize()
+        await self.ainitialize()
         state_key, probe_key = _hash_tagged(name)
         config = BreakerConfig(
             threshold=threshold,
@@ -421,7 +421,7 @@ class RedisStore:
         )
         start = time.perf_counter()
         try:
-            payload = await self._evalsha(
+            payload = await self._aevalsha(
                 "acquire",
                 keys=[state_key, probe_key],
                 args=[
@@ -447,7 +447,7 @@ class RedisStore:
         self._observer.on_decision(name=name, snapshot=snapshot, decision=decision)
         return decision, snapshot
 
-    async def record_failure(
+    async def arecord_failure(
         self,
         name: str,
         *,
@@ -456,7 +456,7 @@ class RedisStore:
         counting: CountingPolicy | None = None,
     ) -> Snapshot:
         """Atomically increment the failure counter (or trip the breaker)."""
-        await self.initialize()
+        await self.ainitialize()
         state_key, probe_key = _hash_tagged(name)
         sliding = counting is not None and counting.strategy == "sliding_window"
         config = BreakerConfig(threshold=threshold, ttl=ttl_seconds)
@@ -464,7 +464,7 @@ class RedisStore:
         try:
             if counting is not None and counting.strategy == "sliding_window":
                 win_key = f"{state_key}:win"
-                payload = await self._evalsha(
+                payload = await self._aevalsha(
                     "record_failure_windowed",
                     keys=[state_key, win_key, probe_key],
                     args=[
@@ -475,7 +475,7 @@ class RedisStore:
                     ],
                 )
             else:
-                payload = await self._evalsha(
+                payload = await self._aevalsha(
                     "record_failure",
                     keys=[state_key, probe_key],
                     args=[str(threshold), str(ttl_seconds), str(self._key_ttl_seconds)],
@@ -498,14 +498,14 @@ class RedisStore:
         self._observer.on_call(op="record_failure", name=name, duration_ms=duration_ms)
         return snapshot
 
-    async def record_success(
+    async def arecord_success(
         self,
         name: str,
         *,
         counting: CountingPolicy | None = None,
     ) -> Snapshot:
         """Atomically reset the failure counter (or close the breaker after a probe)."""
-        await self.initialize()
+        await self.ainitialize()
         state_key, probe_key = _hash_tagged(name)
         sliding = counting is not None and counting.strategy == "sliding_window"
         config = BreakerConfig()
@@ -513,7 +513,7 @@ class RedisStore:
         try:
             if counting is not None and counting.strategy == "sliding_window":
                 win_key = f"{state_key}:win"
-                payload = await self._evalsha(
+                payload = await self._aevalsha(
                     "record_success_windowed",
                     keys=[state_key, win_key, probe_key],
                     args=[
@@ -522,7 +522,7 @@ class RedisStore:
                     ],
                 )
             else:
-                payload = await self._evalsha(
+                payload = await self._aevalsha(
                     "record_success",
                     keys=[state_key, probe_key],
                     args=[str(self._key_ttl_seconds)],
@@ -545,7 +545,7 @@ class RedisStore:
         self._observer.on_call(op="record_success", name=name, duration_ms=duration_ms)
         return snapshot
 
-    async def peek(self, name: str) -> Snapshot | None:
+    async def apeek(self, name: str) -> Snapshot | None:
         """Read the current snapshot without mutating state.
 
         Returns ``None`` only when Redis is reachable AND the key does not
@@ -590,7 +590,7 @@ class RedisStore:
         self._cache[name] = snapshot
         return snapshot
 
-    async def reset(self, name: str | None = None) -> None:
+    async def areset(self, name: str | None = None) -> None:
         """Discard breaker state for ``name`` (or every circuit in the cache when None)."""
         if name is None:
             self._cache.clear()
@@ -609,7 +609,7 @@ class RedisStore:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _evalsha(
+    async def _aevalsha(
         self,
         tag: str,
         *,
@@ -628,18 +628,18 @@ class RedisStore:
         if sha is None:
             async with self._init_lock:
                 if self._shas.get(tag) is None:
-                    await self._load_scripts()
+                    await self._aload_scripts()
             sha = self._shas[tag]
         try:
-            return await self._dispatch(sha, keys=keys, args=args)
+            return await self._adispatch(sha, keys=keys, args=args)
         except NoScriptError:
             # Serialise concurrent reload bursts so a Redis primary fail-over
             # does not produce N SCRIPT LOAD calls per concurrent EVALSHA.
             async with self._init_lock:
-                await self._load_scripts()
+                await self._aload_scripts()
                 sha = self._shas[tag]
             try:
-                return await self._dispatch(sha, keys=keys, args=args)
+                return await self._adispatch(sha, keys=keys, args=args)
             except (RedisError, TimeoutError) as exc:
                 wrapped = CircuitStorageError(f"EVALSHA retry for {tag!r} failed.")
                 wrapped.__cause__ = exc
@@ -651,7 +651,7 @@ class RedisStore:
             self._observer.on_error(op=tag, name=keys[0], exc=wrapped)
             raise wrapped from exc
 
-    async def _dispatch(self, sha: str, *, keys: list[str], args: list[str]) -> list[Any]:
+    async def _adispatch(self, sha: str, *, keys: list[str], args: list[str]) -> list[Any]:
         """Issue a raw EVALSHA and normalise the result to ``list[Any]``."""
         async with asyncio.timeout(self._request_timeout_seconds):
             result_or_awaitable = self._client.evalsha(sha, len(keys), *keys, *args)
@@ -742,7 +742,7 @@ class RedisStore:
         default closed snapshot (lenient: pretend the failure didn't happen).
         ``FAIL_CLOSED`` returns the cached snapshot if present, otherwise a
         synthesised opened snapshot (cautious: pretend the breaker tripped).
-        ``FAIL_STATIC`` delegates to :meth:`_fail_static_snapshot` (cache
+        ``FAIL_STATIC`` delegates to :meth:`_fail_static_asnapshot` (cache
         lookup; raises :exc:`CircuitStorageError` on cold cache).
         """
         if self._failure_policy is StorageFailurePolicy.FAIL_OPEN:
@@ -818,7 +818,7 @@ class RedisStore:
         Returns the projected :class:`Decision` plus a :class:`Snapshot` that
         the runtime layer can use as pre-state for state-change emission. On
         cache miss the snapshot is a default ``closed`` snapshot --- mirroring
-        what the runtime previously synthesised when ``peek`` returned
+        what the runtime previously synthesised when ``apeek`` returned
         ``None`` during an outage.
         """
         cached = self._cache.get(name)

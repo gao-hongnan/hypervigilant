@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 async def store(redis_url: str) -> "AsyncGenerator[RedisStore]":
     """A ``RedisStore`` connected to the test container Redis."""
     instance = RedisStore.from_url(redis_url)
-    await instance.initialize()
+    await instance.ainitialize()
     yield instance
     await instance.aclose()
 
@@ -136,7 +136,7 @@ async def test_request_timeout_raises_circuit_storage_error_on_slow_client() -> 
     store = RedisStore(client=_SlowClient(), request_timeout_seconds=0.05)  # type: ignore[arg-type]
     elapsed_start = _asyncio.get_event_loop().time()
     with pytest.raises(CircuitStorageError):
-        await store.acquire(
+        await store.aacquire(
             "svc",
             threshold=5,
             ttl_seconds=30.0,
@@ -218,7 +218,7 @@ async def test_redis_store_implements_protocol(store: RedisStore) -> None:
 @pytest.mark.integration
 async def test_acquire_on_fresh_circuit_returns_allow(store: RedisStore) -> None:
     """A circuit Redis has never seen returns AllowCall (state=closed)."""
-    decision, _ = await store.acquire(
+    decision, _ = await store.aacquire(
         "fresh",
         threshold=5,
         ttl_seconds=30.0,
@@ -230,10 +230,10 @@ async def test_acquire_on_fresh_circuit_returns_allow(store: RedisStore) -> None
 @pytest.mark.integration
 async def test_record_failure_increments_count_and_persists(store: RedisStore) -> None:
     """A single failure persists into Redis and is observable via peek."""
-    snap = await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
+    snap = await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
     assert snap.state == "closed"
     assert snap.failure_count == 1
-    seen = await store.peek("svc")
+    seen = await store.apeek("svc")
     assert seen is not None
     assert seen.failure_count == 1
 
@@ -243,7 +243,7 @@ async def test_threshold_crossing_transitions_to_opened_with_generation_incremen
     store: RedisStore,
 ) -> None:
     """Crossing the threshold flips state to opened with generation+=1 atomically."""
-    pre = await store.peek("svc") or Snapshot(
+    pre = await store.apeek("svc") or Snapshot(
         name="svc",
         state="closed",
         failure_count=0,
@@ -251,8 +251,8 @@ async def test_threshold_crossing_transitions_to_opened_with_generation_incremen
         generation=0,
     )
     for _ in range(4):
-        await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
-    final = await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
+    final = await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
     assert final.state == "opened"
     assert final.failure_count == 5
     assert final.generation == pre.generation + 1
@@ -261,8 +261,8 @@ async def test_threshold_crossing_transitions_to_opened_with_generation_incremen
 @pytest.mark.integration
 async def test_record_success_resets_count_in_closed_state(store: RedisStore) -> None:
     """Success in closed state resets failure_count to zero."""
-    await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
-    snap = await store.record_success("svc")
+    await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
+    snap = await store.arecord_success("svc")
     assert snap.state == "closed"
     assert snap.failure_count == 0
 
@@ -273,18 +273,18 @@ async def test_acquire_after_ttl_returns_probe_and_transitions_state(
 ) -> None:
     """After TTL elapses, acquire returns ProbeCall and persists half_opened."""
     for _ in range(5):
-        await store.record_failure("svc", threshold=5, ttl_seconds=0.5)
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=0.5)
     import asyncio
 
     await asyncio.sleep(0.6)
-    decision, _ = await store.acquire(
+    decision, _ = await store.aacquire(
         "svc",
         threshold=5,
         ttl_seconds=0.5,
         lease_seconds=5.0,
     )
     assert isinstance(decision, ProbeCall)
-    snap = await store.peek("svc")
+    snap = await store.apeek("svc")
     assert snap is not None
     assert snap.state == "half_opened"
 
@@ -297,13 +297,13 @@ async def test_record_success_during_half_open_closes_breaker(
     import asyncio
 
     for _ in range(5):
-        await store.record_failure("svc", threshold=5, ttl_seconds=0.5)
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=0.5)
     await asyncio.sleep(0.6)
-    await store.acquire("svc", threshold=5, ttl_seconds=0.5, lease_seconds=5.0)
-    pre = await store.peek("svc")
+    await store.aacquire("svc", threshold=5, ttl_seconds=0.5, lease_seconds=5.0)
+    pre = await store.apeek("svc")
     assert pre is not None
     assert pre.state == "half_opened"
-    snap = await store.record_success("svc")
+    snap = await store.arecord_success("svc")
     assert snap.state == "closed"
     assert snap.failure_count == 0
     assert snap.generation == pre.generation + 1
@@ -312,9 +312,9 @@ async def test_record_success_during_half_open_closes_breaker(
 @pytest.mark.integration
 async def test_reset_clears_named_circuit(store: RedisStore) -> None:
     """``reset(name)`` deletes both state and probe keys."""
-    await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
-    await store.reset("svc")
-    seen = await store.peek("svc")
+    await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
+    await store.areset("svc")
+    seen = await store.apeek("svc")
     assert seen is None
 
 
@@ -347,9 +347,9 @@ async def test_fail_static_cached_closed_allows_during_redis_outage(
     """Cached state==closed permits the call while emitting a structured warning."""
     observer = _Capture()
     store._observer = observer  # noqa: SLF001 -- swap observer to capture fallback
-    await store.record_success("svc")
+    await store.arecord_success("svc")
     _install_failing_evalsha(store)
-    decision, _ = await store.acquire(
+    decision, _ = await store.aacquire(
         "svc",
         threshold=5,
         ttl_seconds=30.0,
@@ -365,12 +365,12 @@ async def test_fail_static_cached_open_denies_during_redis_outage(
 ) -> None:
     """Cached state==opened denies via RejectCall while Redis is unreachable."""
     for _ in range(5):
-        await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
-    pre = await store.peek("svc")
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
+    pre = await store.apeek("svc")
     assert pre is not None
     assert pre.state == "opened"
     _install_failing_evalsha(store)
-    decision, _ = await store.acquire(
+    decision, _ = await store.aacquire(
         "svc",
         threshold=5,
         ttl_seconds=30.0,
@@ -386,10 +386,10 @@ async def test_fail_static_cold_cache_falls_through_to_secondary_open(
     """An empty cache + Redis outage falls through to FAIL_OPEN by default."""
     observer = _Capture()
     store = RedisStore.from_url(redis_url, observer=observer)
-    await store.initialize()
+    await store.ainitialize()
     _install_failing_evalsha(store)
     try:
-        decision, _ = await store.acquire(
+        decision, _ = await store.aacquire(
             "never-seen",
             threshold=5,
             ttl_seconds=30.0,
@@ -412,10 +412,10 @@ async def test_fail_static_cold_cache_with_secondary_closed_denies(
         secondary_policy=StorageFailurePolicy.FAIL_CLOSED,
         observer=observer,
     )
-    await store.initialize()
+    await store.ainitialize()
     _install_failing_evalsha(store)
     try:
-        decision, _ = await store.acquire(
+        decision, _ = await store.aacquire(
             "never-seen",
             threshold=5,
             ttl_seconds=30.0,
@@ -446,18 +446,18 @@ async def test_failure_policy_fail_open_acquire_returns_allow_during_outage(
         failure_policy=StorageFailurePolicy.FAIL_OPEN,
         observer=observer,
     )
-    await store.initialize()
+    await store.ainitialize()
     try:
         # Seed cache with an opened snapshot so we can prove FAIL_OPEN
         # bypasses the cached projection.
         for _ in range(5):
-            await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
-        cached = await store.peek("svc")
+            await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
+        cached = await store.apeek("svc")
         assert cached is not None
         assert cached.state == "opened"
 
         _install_failing_evalsha(store)
-        decision, _ = await store.acquire(
+        decision, _ = await store.aacquire(
             "svc",
             threshold=5,
             ttl_seconds=30.0,
@@ -484,15 +484,15 @@ async def test_failure_policy_fail_closed_acquire_returns_reject_during_outage(
         failure_policy=StorageFailurePolicy.FAIL_CLOSED,
         observer=observer,
     )
-    await store.initialize()
+    await store.ainitialize()
     try:
-        await store.record_success("svc")
-        cached = await store.peek("svc")
+        await store.arecord_success("svc")
+        cached = await store.apeek("svc")
         assert cached is not None
         assert cached.state == "closed"
 
         _install_failing_evalsha(store)
-        decision, _ = await store.acquire(
+        decision, _ = await store.aacquire(
             "svc",
             threshold=5,
             ttl_seconds=30.0,
@@ -514,10 +514,10 @@ async def test_failure_policy_fail_open_record_failure_returns_synthesized_snaps
         redis_url,
         failure_policy=StorageFailurePolicy.FAIL_OPEN,
     )
-    await store.initialize()
+    await store.ainitialize()
     _install_failing_evalsha(store)
     try:
-        snap = await store.record_failure(
+        snap = await store.arecord_failure(
             "never-seen",
             threshold=5,
             ttl_seconds=30.0,
@@ -538,10 +538,10 @@ async def test_failure_policy_fail_closed_record_failure_returns_opened_snapshot
         redis_url,
         failure_policy=StorageFailurePolicy.FAIL_CLOSED,
     )
-    await store.initialize()
+    await store.ainitialize()
     _install_failing_evalsha(store)
     try:
-        snap = await store.record_failure(
+        snap = await store.arecord_failure(
             "never-seen",
             threshold=5,
             ttl_seconds=30.0,
@@ -565,9 +565,9 @@ async def test_acquire_with_stale_half_open_lease_reissues_probe(
     import asyncio
 
     for _ in range(5):
-        await store.record_failure("svc", threshold=5, ttl_seconds=0.5)
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=0.5)
     await asyncio.sleep(0.6)
-    first, _ = await store.acquire(
+    first, _ = await store.aacquire(
         "svc",
         threshold=5,
         ttl_seconds=0.5,
@@ -577,7 +577,7 @@ async def test_acquire_with_stale_half_open_lease_reissues_probe(
 
     # Probe coroutine crashes: lease expires without record_*.
     await asyncio.sleep(0.3)
-    second, _ = await store.acquire(
+    second, _ = await store.aacquire(
         "svc",
         threshold=5,
         ttl_seconds=0.5,
@@ -596,7 +596,7 @@ async def test_peek_returns_none_for_absent_key_when_redis_healthy(
     store: RedisStore,
 ) -> None:
     """``peek`` returns ``None`` when Redis is reachable and the key does not exist."""
-    assert await store.peek("never-touched") is None
+    assert await store.apeek("never-touched") is None
 
 
 @pytest.mark.integration
@@ -621,7 +621,7 @@ async def test_peek_raises_circuit_storage_error_on_outage_with_cold_cache(
     store._client.hgetall = _fail_hgetall  # noqa: SLF001 -- test injection
 
     with pytest.raises(CircuitStorageError):
-        await store.peek("never-cached")
+        await store.apeek("never-cached")
 
 
 @pytest.mark.integration
@@ -633,8 +633,8 @@ async def test_peek_returns_cached_snapshot_on_outage_when_cache_warm(
     """
     from redis.exceptions import ConnectionError as RedisConnectionError
 
-    await store.record_success("svc")
-    cached_before = await store.peek("svc")
+    await store.arecord_success("svc")
+    cached_before = await store.apeek("svc")
     assert cached_before is not None
 
     async def _fail_hgetall(*_args: object, **_kwargs: object) -> object:
@@ -642,7 +642,7 @@ async def test_peek_returns_cached_snapshot_on_outage_when_cache_warm(
         raise RedisConnectionError(msg)
 
     store._client.hgetall = _fail_hgetall  # noqa: SLF001 -- test injection
-    snap = await store.peek("svc")
+    snap = await store.apeek("svc")
     assert snap is not None
     assert snap.state == cached_before.state
 
@@ -653,11 +653,11 @@ async def test_record_failure_during_outage_with_cold_cache_raises(
 ) -> None:
     """``record_failure`` with no cached snapshot raises ``CircuitStorageError``."""
     store = RedisStore.from_url(redis_url)
-    await store.initialize()
+    await store.ainitialize()
     _install_failing_evalsha(store)
     try:
         with pytest.raises(CircuitStorageError):
-            await store.record_failure(
+            await store.arecord_failure(
                 "never-seen",
                 threshold=5,
                 ttl_seconds=30.0,
@@ -677,9 +677,9 @@ async def test_noscript_error_triggers_reload_and_retry(
 ) -> None:
     """``SCRIPT FLUSH`` drops the script cache; the next EVALSHA reloads + retries."""
     store = RedisStore.from_url(redis_url)
-    await store.initialize()
+    await store.ainitialize()
     try:
-        await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
         # Drop the Redis-side script cache to force the NOSCRIPT path.
         from redis.asyncio import Redis
 
@@ -692,7 +692,7 @@ async def test_noscript_error_triggers_reload_and_retry(
             closer = getattr(admin, "aclose", None) or getattr(admin, "close", None)
             if closer is not None:
                 await closer()
-        snap = await store.record_failure("svc", threshold=5, ttl_seconds=30.0)
+        snap = await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
         assert snap.failure_count == 2
     finally:
         await store.aclose()
@@ -707,13 +707,13 @@ async def test_noscript_error_triggers_reload_and_retry(
 async def test_redis_sliding_trips_at_rate(redis_url: str) -> None:
     """A sliding breaker trips on Redis once the window fills past min_calls."""
     store = RedisStore.from_url(redis_url)
-    await store.initialize()
+    await store.ainitialize()
     policy = CountingPolicy("sliding_window", 10, 0.5, 10)
     try:
         for _ in range(9):
-            snap = await store.record_failure("sliding", threshold=5, ttl_seconds=30.0, counting=policy)
+            snap = await store.arecord_failure("sliding", threshold=5, ttl_seconds=30.0, counting=policy)
             assert snap.state == "closed"
-        snap = await store.record_failure("sliding", threshold=5, ttl_seconds=30.0, counting=policy)
+        snap = await store.arecord_failure("sliding", threshold=5, ttl_seconds=30.0, counting=policy)
         assert snap.state == "opened"
         assert snap.window is None  # opened: no active window
     finally:
@@ -724,11 +724,11 @@ async def test_redis_sliding_trips_at_rate(redis_url: str) -> None:
 async def test_redis_sliding_success_records_into_window(redis_url: str) -> None:
     """A success on Redis records into the sliding window without wiping it (EC-103)."""
     store = RedisStore.from_url(redis_url)
-    await store.initialize()
+    await store.ainitialize()
     policy = CountingPolicy("sliding_window", 10, 0.5, 10)
     try:
-        await store.record_failure("svc", threshold=5, ttl_seconds=30.0, counting=policy)
-        snap = await store.record_success("svc", counting=policy)
+        await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0, counting=policy)
+        snap = await store.arecord_success("svc", counting=policy)
         assert snap.state == "closed"
         assert snap.window is not None
         assert snap.window.total == 2
@@ -741,15 +741,15 @@ async def test_redis_sliding_success_records_into_window(redis_url: str) -> None
 async def test_redis_sliding_concurrent_single_trip(redis_url: str) -> None:
     """1,000 concurrent record_failure calls produce exactly one trip (EC-107)."""
     store = RedisStore.from_url(redis_url)
-    await store.initialize()
+    await store.ainitialize()
     policy = CountingPolicy("sliding_window", 10, 0.5, 10)
     try:
-        before = await store.peek("blast")
+        before = await store.apeek("blast")
         baseline = before.generation if before is not None else 0
         await asyncio.gather(
-            *[store.record_failure("blast", threshold=5, ttl_seconds=30.0, counting=policy) for _ in range(1000)]
+            *[store.arecord_failure("blast", threshold=5, ttl_seconds=30.0, counting=policy) for _ in range(1000)]
         )
-        after = await store.peek("blast")
+        after = await store.apeek("blast")
         assert after is not None
         assert after.state == "opened"
         assert after.generation == baseline + 1

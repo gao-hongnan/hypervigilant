@@ -12,7 +12,7 @@ race-free.
 The store delegates every state-machine transition to the sansio core
 (:func:`hypervigilant.circuit_breaker.breaker.project_decision`,
 :func:`apply_failure`, :func:`apply_success`). The OPEN → HALF_OPEN transition
-that ``acquire`` triggers when the TTL has elapsed is the only piece of
+that ``aacquire`` triggers when the TTL has elapsed is the only piece of
 transition logic the store applies directly, because the sansio core's
 ``project_decision`` is intentionally read-only.
 
@@ -31,7 +31,7 @@ Examples
 >>> from hypervigilant.circuit_breaker.stores.memory import InMemoryStore
 >>> async def demo() -> str:
 ...     store = InMemoryStore()
-...     decision, _snapshot = await store.acquire('svc', threshold=5, ttl_seconds=30.0, lease_seconds=5.0)
+...     decision, _snapshot = await store.aacquire('svc', threshold=5, ttl_seconds=30.0, lease_seconds=5.0)
 ...     return type(decision).__name__
 >>> asyncio.run(demo())
 'AllowCall'
@@ -41,21 +41,21 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-from hypervigilant.circuit_breaker.breaker import (
+from ..breaker import (
     apply_failure,
     apply_failure_windowed,
     apply_success,
     apply_success_windowed,
     project_decision,
 )
-from hypervigilant.circuit_breaker.clock import Clock, MonotonicClock
-from hypervigilant.circuit_breaker.config import BreakerConfig, CountingPolicy
-from hypervigilant.circuit_breaker.hooks import NoOpObserver, StoreObserver
-from hypervigilant.circuit_breaker.policy import (
+from ..clock import Clock, MonotonicClock
+from ..config import BreakerConfig, CountingPolicy
+from ..hooks import NoOpObserver, StoreObserver
+from ..policy import (
     Decision,
     ProbeCall,
 )
-from hypervigilant.circuit_breaker.state import Snapshot, Window
+from ..state import Snapshot, Window
 
 __all__ = ["InMemoryStore"]
 
@@ -103,7 +103,7 @@ class InMemoryStore:
     >>> from hypervigilant.circuit_breaker.stores.memory import InMemoryStore
     >>> async def demo() -> int:
     ...     store = InMemoryStore()
-    ...     snap = await store.record_failure('svc', threshold=5, ttl_seconds=30.0)
+    ...     snap = await store.arecord_failure('svc', threshold=5, ttl_seconds=30.0)
     ...     return snap.failure_count
     >>> asyncio.run(demo())
     1
@@ -122,7 +122,7 @@ class InMemoryStore:
         self._cells: dict[str, _Cell] = {}
         self._dict_lock = asyncio.Lock()
 
-    async def _get_or_create_cell(self, name: str) -> _Cell:
+    async def _aget_or_create_cell(self, name: str) -> _Cell:
         """Return the cell for ``name``, creating it on first reference."""
         async with self._dict_lock:
             cell = self._cells.get(name)
@@ -139,7 +139,7 @@ class InMemoryStore:
                 self._cells[name] = cell
             return cell
 
-    async def acquire(
+    async def aacquire(
         self,
         name: str,
         *,
@@ -149,9 +149,9 @@ class InMemoryStore:
     ) -> tuple[Decision, Snapshot]:
         """Project the next :class:`Decision` and apply OPEN → HALF_OPEN if TTL elapsed.
 
-        See :class:`BreakerStore.acquire` for the contract.
+        See :meth:`BreakerStore.aacquire` for the contract.
         """
-        cell = await self._get_or_create_cell(name)
+        cell = await self._aget_or_create_cell(name)
         config = BreakerConfig(
             threshold=threshold,
             ttl=ttl_seconds,
@@ -196,7 +196,7 @@ class InMemoryStore:
         )
         return decision, post_snapshot
 
-    async def record_failure(
+    async def arecord_failure(
         self,
         name: str,
         *,
@@ -204,8 +204,8 @@ class InMemoryStore:
         ttl_seconds: float,
         counting: CountingPolicy | None = None,
     ) -> Snapshot:
-        """Atomically apply a failure transition; see :class:`BreakerStore.record_failure`."""
-        cell = await self._get_or_create_cell(name)
+        """Atomically apply a failure transition; see :meth:`BreakerStore.arecord_failure`."""
+        cell = await self._aget_or_create_cell(name)
         start = time.perf_counter()
         async with cell.lock:
             if counting is not None and counting.strategy == "sliding_window":
@@ -221,14 +221,14 @@ class InMemoryStore:
         self._observer.on_call(op="record_failure", name=name, duration_ms=duration_ms)
         return new_snapshot
 
-    async def record_success(
+    async def arecord_success(
         self,
         name: str,
         *,
         counting: CountingPolicy | None = None,
     ) -> Snapshot:
-        """Atomically apply a success transition; see :class:`BreakerStore.record_success`."""
-        cell = await self._get_or_create_cell(name)
+        """Atomically apply a success transition; see :meth:`BreakerStore.arecord_success`."""
+        cell = await self._aget_or_create_cell(name)
         start = time.perf_counter()
         async with cell.lock:
             if counting is not None and counting.strategy == "sliding_window":
@@ -245,7 +245,7 @@ class InMemoryStore:
         self._observer.on_call(op="record_success", name=name, duration_ms=duration_ms)
         return new_snapshot
 
-    async def peek(self, name: str) -> Snapshot | None:
+    async def apeek(self, name: str) -> Snapshot | None:
         """Return the current snapshot without mutating state."""
         async with self._dict_lock:
             cell = self._cells.get(name)
@@ -254,7 +254,7 @@ class InMemoryStore:
         async with cell.lock:
             return cell.snapshot
 
-    async def reset(self, name: str | None = None) -> None:
+    async def areset(self, name: str | None = None) -> None:
         """Discard breaker state. ``name=None`` clears every circuit."""
         async with self._dict_lock:
             if name is None:
@@ -264,9 +264,9 @@ class InMemoryStore:
 
     async def aclose(self) -> None:
         """No-op: the in-memory store owns no external resources."""
-        await self.reset(None)
+        await self.areset(None)
 
-    async def initialize(self) -> None:
+    async def ainitialize(self) -> None:
         """No-op: the in-memory store has no Lua scripts to load."""
 
     def clock_now(self) -> float:

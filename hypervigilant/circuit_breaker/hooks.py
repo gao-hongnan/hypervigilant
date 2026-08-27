@@ -31,9 +31,9 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Protocol, runtime_checkable
 
-from hypervigilant.circuit_breaker.config import StorageFailurePolicy
-from hypervigilant.circuit_breaker.policy import Decision
-from hypervigilant.circuit_breaker.state import Snapshot
+from .config import StorageFailurePolicy
+from .policy import Decision
+from .state import Snapshot
 
 __all__ = ["HookFn", "LoggingObserver", "NoOpObserver", "StoreObserver"]
 
@@ -83,7 +83,7 @@ class StoreObserver(Protocol):
         ...
 
     def on_decision(self, *, name: str, snapshot: Snapshot, decision: Decision) -> None:
-        """Record the Decision returned by ``acquire``."""
+        """Record the Decision returned by ``aacquire``."""
         ...
 
     def on_storage_failure(

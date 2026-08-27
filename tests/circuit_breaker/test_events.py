@@ -90,7 +90,7 @@ async def test_sync_handler_runs_inline() -> None:
     received: list[str] = []
     dispatcher = EventDispatcher()
     dispatcher.register(BreakerCreated, lambda evt: received.append(evt.name))
-    await dispatcher.dispatch(BreakerCreated(name="svc", config_repr="cfg"))
+    await dispatcher.adispatch(BreakerCreated(name="svc", config_repr="cfg"))
     assert received == ["svc"]
 
 
@@ -105,7 +105,7 @@ async def test_async_handler_runs_via_create_task() -> None:
 
     dispatcher = EventDispatcher()
     dispatcher.register(BreakerStateChanged, handler)
-    await dispatcher.dispatch(
+    await dispatcher.adispatch(
         BreakerStateChanged(
             name="svc",
             from_state="closed",
@@ -130,7 +130,7 @@ async def test_sync_handler_exception_is_isolated_and_logged() -> None:
         raise ValueError(msg)
 
     dispatcher.register(BreakerCreated, bad)
-    await dispatcher.dispatch(BreakerCreated(name="svc", config_repr="cfg"))
+    await dispatcher.adispatch(BreakerCreated(name="svc", config_repr="cfg"))
     assert len(observer.errors) == 1
     op, name, exc = observer.errors[0]
     assert op == "hook_dispatch"
@@ -151,7 +151,7 @@ async def test_async_handler_exception_is_isolated_and_logged() -> None:
         raise RuntimeError(msg)
 
     dispatcher.register(BreakerFailed, bad)
-    await dispatcher.dispatch(
+    await dispatcher.adispatch(
         BreakerFailed(name="svc", exception_repr="oops", failure_count=3),
     )
     await dispatcher.aclose()
@@ -166,7 +166,7 @@ async def test_unsubscribe_removes_handler() -> None:
     dispatcher = EventDispatcher()
     unsub = dispatcher.register(BreakerCreated, lambda evt: received.append(evt.name))
     unsub()
-    await dispatcher.dispatch(BreakerCreated(name="svc", config_repr="cfg"))
+    await dispatcher.adispatch(BreakerCreated(name="svc", config_repr="cfg"))
     assert received == []
 
 
@@ -196,6 +196,6 @@ async def test_multiple_handlers_dispatch_in_registration_order() -> None:
 
     dispatcher.register(BreakerRecovered, first)
     dispatcher.register(BreakerRecovered, second)
-    await dispatcher.dispatch(BreakerRecovered(name="svc", generation=2))
+    await dispatcher.adispatch(BreakerRecovered(name="svc", generation=2))
     assert received == ["first:svc", "second:svc"]
     assert len(observer.errors) == 1

@@ -3,10 +3,10 @@
 The Protocol exposes high-level *decision primitives*, not CRUD. Two return
 shapes coexist (Decision 4 / FR-005):
 
-* :meth:`BreakerStore.acquire` returns a :class:`Decision` directly — its job
+* :meth:`BreakerStore.aacquire` returns a :class:`Decision` directly — its job
   is to decide whether the call can proceed, and to atomically transition
   ``state == "opened"`` to ``state == "half_opened"`` when the TTL has elapsed.
-* :meth:`BreakerStore.record_failure` and :meth:`BreakerStore.record_success`
+* :meth:`BreakerStore.arecord_failure` and :meth:`BreakerStore.arecord_success`
   return only the post-mutation :class:`Snapshot`; the caller (sansio
   ``breaker.py``) projects the next Decision in pure Python.
 
@@ -34,9 +34,9 @@ True
 
 from typing import Protocol, runtime_checkable
 
-from hypervigilant.circuit_breaker.config import CountingPolicy
-from hypervigilant.circuit_breaker.policy import Decision
-from hypervigilant.circuit_breaker.state import Snapshot
+from ..config import CountingPolicy
+from ..policy import Decision
+from ..state import Snapshot
 
 __all__ = ["BreakerStore"]
 
@@ -46,15 +46,15 @@ class BreakerStore(Protocol):
     """Storage contract consumed by the runtime layer (``AsyncCircuitBreaker``).
 
     Implementations persist a :class:`Snapshot` per circuit name and project
-    Decisions through the sansio core when callers ``acquire``. Mutating
-    operations (``record_failure``, ``record_success``) MUST be atomic; the
+    Decisions through the sansio core when callers ``aacquire``. Mutating
+    operations (``arecord_failure``, ``arecord_success``) MUST be atomic; the
     Lua-backed Redis implementation guarantees this by running each mutation
     inside a single ``EVALSHA`` round-trip, while the in-memory implementation
     serialises through a per-circuit :class:`asyncio.Lock`.
 
     Notes
     -----
-    Only :meth:`acquire` triggers the ``opened`` → ``half_opened`` transition.
+    Only :meth:`aacquire` triggers the ``opened`` → ``half_opened`` transition.
     Subsequent concurrent callers during the half-open window observe a
     :class:`hypervigilant.circuit_breaker.policy.RejectCall` (single-flight
     by default; ``BreakerConfig.half_open_max_calls = 1``).
@@ -67,7 +67,7 @@ class BreakerStore(Protocol):
     'InMemoryStore'
     """
 
-    async def acquire(
+    async def aacquire(
         self,
         name: str,
         *,
@@ -79,7 +79,7 @@ class BreakerStore(Protocol):
 
         Atomically applies the ``opened`` → ``half_opened`` transition when
         the TTL has elapsed. The snapshot returned is the post-acquire state,
-        so the runtime layer does not need to issue a follow-up ``peek``.
+        so the runtime layer does not need to issue a follow-up ``apeek``.
 
         Parameters
         ----------
@@ -107,7 +107,7 @@ class BreakerStore(Protocol):
         """
         ...
 
-    async def record_failure(
+    async def arecord_failure(
         self,
         name: str,
         *,
@@ -134,7 +134,7 @@ class BreakerStore(Protocol):
         """
         ...
 
-    async def record_success(
+    async def arecord_success(
         self,
         name: str,
         *,
@@ -154,7 +154,7 @@ class BreakerStore(Protocol):
         """
         ...
 
-    async def peek(self, name: str) -> Snapshot | None:
+    async def apeek(self, name: str) -> Snapshot | None:
         """Read the current snapshot without mutating state.
 
         Parameters
@@ -169,7 +169,7 @@ class BreakerStore(Protocol):
             referenced.
         """
 
-    async def reset(self, name: str | None = None) -> None:
+    async def areset(self, name: str | None = None) -> None:
         """Discard breaker state.
 
         Parameters
@@ -182,11 +182,11 @@ class BreakerStore(Protocol):
     async def aclose(self) -> None:
         """Release any resources owned by the store (connection pool, etc.)."""
 
-    async def initialize(self) -> None:
+    async def ainitialize(self) -> None:
         """Eager-initialise the store (no-op for in-memory; loads Lua for Redis).
 
         Idempotent: callers may invoke it multiple times. The runtime layer
-        calls this from ``AsyncBreakerRegistry.initialize`` to amortise
+        calls this from ``AsyncBreakerRegistry.ainitialize`` to amortise
         SCRIPT LOAD over the registry's lifespan rather than the first
         protected call.
         """

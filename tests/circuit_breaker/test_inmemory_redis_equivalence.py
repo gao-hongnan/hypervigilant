@@ -80,13 +80,13 @@ def test_in_memory_state_traces_satisfy_invariants() -> None:
             for op in ops:
                 clock.advance(0.5)
                 if op == _OP_FAILURE:
-                    await store.record_failure("svc", threshold=3, ttl_seconds=10.0)
+                    await store.arecord_failure("svc", threshold=3, ttl_seconds=10.0)
                 elif op == _OP_SUCCESS:
-                    await store.record_success("svc")
+                    await store.arecord_success("svc")
                 else:
-                    await store.peek("svc")
+                    await store.apeek("svc")
             traces: list[Snapshot] = []
-            seen = await store.peek("svc")
+            seen = await store.apeek("svc")
             if seen is not None:
                 traces.append(seen)
             _replay_invariants(traces)
@@ -98,7 +98,7 @@ def test_in_memory_state_traces_satisfy_invariants() -> None:
 async def equivalence_store(redis_url: str) -> "AsyncGenerator[RedisStore]":
     """Per-test ``RedisStore`` for the equivalence comparison."""
     store = RedisStore.from_url(redis_url)
-    await store.initialize()
+    await store.ainitialize()
     yield store
     await store.aclose()
 
@@ -122,27 +122,27 @@ async def test_inmemory_redis_equivalence(equivalence_store: RedisStore) -> None
         redis_trace: list[tuple[str, int]] = []
 
         circuit_name = f"equiv_{sequence_idx}"
-        await equivalence_store.reset(circuit_name)
+        await equivalence_store.areset(circuit_name)
 
         for op in ops:
             if op == _OP_FAILURE:
-                a = await in_memory.record_failure(
+                a = await in_memory.arecord_failure(
                     circuit_name,
                     threshold=3,
                     ttl_seconds=10.0,
                 )
-                b = await equivalence_store.record_failure(
+                b = await equivalence_store.arecord_failure(
                     circuit_name,
                     threshold=3,
                     ttl_seconds=10.0,
                 )
             elif op == _OP_SUCCESS:
-                a = await in_memory.record_success(circuit_name)
-                b = await equivalence_store.record_success(circuit_name)
+                a = await in_memory.arecord_success(circuit_name)
+                b = await equivalence_store.arecord_success(circuit_name)
             else:
                 # peek doesn't mutate; record only if both backends return a snapshot.
-                snap_a = await in_memory.peek(circuit_name)
-                snap_b = await equivalence_store.peek(circuit_name)
+                snap_a = await in_memory.apeek(circuit_name)
+                snap_b = await equivalence_store.apeek(circuit_name)
                 if snap_a is not None and snap_b is not None:
                     a = snap_a
                     b = snap_b
@@ -177,15 +177,17 @@ async def test_inmemory_redis_equivalence_sliding(equivalence_store: RedisStore)
         redis_trace: list[tuple[str, int, int]] = []
 
         circuit_name = f"slidequiv_{sequence_idx}"
-        await equivalence_store.reset(circuit_name)
+        await equivalence_store.areset(circuit_name)
 
         for op in ops:
             if op == _OP_FAILURE:
-                a = await in_memory.record_failure(circuit_name, threshold=3, ttl_seconds=10.0, counting=policy)
-                b = await equivalence_store.record_failure(circuit_name, threshold=3, ttl_seconds=10.0, counting=policy)
+                a = await in_memory.arecord_failure(circuit_name, threshold=3, ttl_seconds=10.0, counting=policy)
+                b = await equivalence_store.arecord_failure(
+                    circuit_name, threshold=3, ttl_seconds=10.0, counting=policy
+                )
             else:
-                a = await in_memory.record_success(circuit_name, counting=policy)
-                b = await equivalence_store.record_success(circuit_name, counting=policy)
+                a = await in_memory.arecord_success(circuit_name, counting=policy)
+                b = await equivalence_store.arecord_success(circuit_name, counting=policy)
             memory_trace.append((a.state, a.generation, a.failure_count))
             redis_trace.append((b.state, b.generation, b.failure_count))
 

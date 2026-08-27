@@ -203,7 +203,7 @@ class BreakerConfig:
 
         ``threshold`` is retained from the default (5) but is **ignored** when
         ``counting.strategy == "sliding_window"``; it remains only so the
-        ``acquire`` / ``record_failure`` ``threshold=`` kwargs do not churn.
+        ``aacquire`` / ``arecord_failure`` ``threshold=`` kwargs do not churn.
 
         Examples
         --------

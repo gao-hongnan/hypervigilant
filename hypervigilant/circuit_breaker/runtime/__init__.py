@@ -7,7 +7,7 @@ The runtime layer is the only place I/O occurs; the sansio core
 remain I/O-free or I/O-bounded respectively.
 """
 
-from hypervigilant.circuit_breaker.runtime.asyncio import (
+from .asyncio import (
     AsyncBreakerRegistry,
     AsyncCircuitBreaker,
 )

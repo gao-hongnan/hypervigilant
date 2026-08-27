@@ -35,15 +35,15 @@ Examples
 
 from typing import assert_never
 
-from hypervigilant.circuit_breaker.clock import Clock
-from hypervigilant.circuit_breaker.config import BreakerConfig, CountingPolicy
-from hypervigilant.circuit_breaker.policy import (
+from .clock import Clock
+from .config import BreakerConfig, CountingPolicy
+from .policy import (
     AllowCall,
     Decision,
     ProbeCall,
     RejectCall,
 )
-from hypervigilant.circuit_breaker.state import Snapshot, Window, WindowSummary
+from .state import Snapshot, Window, WindowSummary
 
 __all__ = [
     "apply_failure",

@@ -19,7 +19,7 @@ from pydantic import SecretStr
 from hypervigilant.db.config import DBConfig
 from hypervigilant.db.runtime.asyncio import Database
 from hypervigilant.db.session import SessionProvider
-from hypervigilant.db.testing import rollback_scope
+from hypervigilant.db.testing import arollback_scope
 
 if TYPE_CHECKING:
     from testcontainers.community.postgres import PostgresContainer
@@ -80,5 +80,5 @@ async def database(db_config: DBConfig) -> AsyncGenerator[Database]:
 @pytest_asyncio.fixture(loop_scope="session")
 async def sessions(database: Database) -> AsyncGenerator[SessionProvider]:
     """A provider whose every session is rolled back when the test ends."""
-    async with rollback_scope(database) as provider:
+    async with arollback_scope(database) as provider:
         yield provider

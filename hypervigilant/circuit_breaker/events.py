@@ -40,8 +40,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TypeAlias, TypeVar
 
-from hypervigilant.circuit_breaker.hooks import NoOpObserver, StoreObserver
-from hypervigilant.circuit_breaker.state import BreakerState
+from .hooks import NoOpObserver, StoreObserver
+from .state import BreakerState
 
 __all__ = [
     "BreakerCreated",
@@ -121,7 +121,7 @@ _E = TypeVar("_E", bound="BreakerEvent")
 class EventDispatcher:
     """Typed event-emitter for the circuit-breaker module.
 
-    Sync handlers fire inline inside :meth:`dispatch`; async handlers are
+    Sync handlers fire inline inside :meth:`adispatch`; async handlers are
     scheduled via :func:`asyncio.create_task` so callers see no extra
     latency. Handler exceptions never propagate to user code; they are
     caught (catch ``Exception``, never ``BaseException``) and routed to
@@ -137,7 +137,7 @@ class EventDispatcher:
     >>> received = []
     >>> unsub = dispatcher.register(BreakerCreated, lambda evt: received.append(evt.name))
     >>> import asyncio
-    >>> asyncio.run(dispatcher.dispatch(BreakerCreated(name='x', config_repr='cfg')))
+    >>> asyncio.run(dispatcher.adispatch(BreakerCreated(name='x', config_repr='cfg')))
     >>> received
     ['x']
     >>> unsub()
@@ -187,7 +187,7 @@ class EventDispatcher:
 
         return _unsubscribe
 
-    async def dispatch(self, event: BreakerEvent) -> None:
+    async def adispatch(self, event: BreakerEvent) -> None:
         """Fan ``event`` out to every registered handler.
 
         Sync handlers run inline; async handlers are scheduled via
@@ -197,7 +197,7 @@ class EventDispatcher:
         handlers = list(self._handlers.get(type(event), ()))
         for handler in handlers:
             if inspect.iscoroutinefunction(handler):
-                task = asyncio.create_task(self._run_async(handler, event))
+                task = asyncio.create_task(self._arun_async(handler, event))
                 self._pending.add(task)
                 task.add_done_callback(self._pending.discard)
             else:
@@ -214,11 +214,11 @@ class EventDispatcher:
             # Caller registered a coroutine-returning callable but
             # ``inspect.iscoroutinefunction`` missed it (e.g. ``functools.partial``
             # over an async function). Schedule the awaitable defensively.
-            task = asyncio.create_task(self._await_safely(result, event))
+            task = asyncio.create_task(self._aawait_safely(result, event))
             self._pending.add(task)
             task.add_done_callback(self._pending.discard)
 
-    async def _run_async(
+    async def _arun_async(
         self,
         handler: Callable[[BreakerEvent], Awaitable[None]],
         event: BreakerEvent,
@@ -230,7 +230,7 @@ class EventDispatcher:
         except Exception as exc:  # noqa: BLE001 -- intentional handler isolation
             self._observer.on_error(op="hook_dispatch", name=event.name, exc=exc)
 
-    async def _await_safely(
+    async def _aawait_safely(
         self,
         awaitable: Awaitable[None],
         event: BreakerEvent,

@@ -4,7 +4,7 @@ The runtime layer wires the sansio core (``breaker.py``) and the storage
 backends (``stores/``) into a user-facing async surface:
 
 * :class:`AsyncCircuitBreaker` is an async context manager that calls
-  :meth:`BreakerStore.acquire` on enter, raises
+  :meth:`BreakerStore.aacquire` on enter, raises
   :exc:`BreakerOpenError` on a :class:`RejectCall` decision, runs the
   protected coroutine on :class:`AllowCall` / :class:`ProbeCall`, and
   records the failure or success on exit.
@@ -28,9 +28,9 @@ from functools import wraps
 from types import TracebackType
 from typing import ParamSpec, Self, TypeVar
 
-from hypervigilant.circuit_breaker.config import BreakerConfig
-from hypervigilant.circuit_breaker.errors import BreakerOpenError, CircuitStorageError
-from hypervigilant.circuit_breaker.events import (
+from ..config import BreakerConfig
+from ..errors import BreakerOpenError, CircuitStorageError
+from ..events import (
     BreakerCreated,
     BreakerEvent,
     BreakerFailed,
@@ -38,11 +38,11 @@ from hypervigilant.circuit_breaker.events import (
     BreakerStateChanged,
     EventDispatcher,
 )
-from hypervigilant.circuit_breaker.hooks import NoOpObserver, StoreObserver
-from hypervigilant.circuit_breaker.policy import RejectCall
-from hypervigilant.circuit_breaker.state import BreakerStatus, Snapshot
-from hypervigilant.circuit_breaker.stores.base import BreakerStore
-from hypervigilant.circuit_breaker.stores.memory import InMemoryStore
+from ..hooks import NoOpObserver, StoreObserver
+from ..policy import RejectCall
+from ..state import BreakerStatus, Snapshot
+from ..stores.base import BreakerStore
+from ..stores.memory import InMemoryStore
 
 __all__ = ["AsyncBreakerRegistry", "AsyncCircuitBreaker"]
 
@@ -67,7 +67,7 @@ class AsyncCircuitBreaker:
 
     The breaker is a thin orchestration layer over a sansio core; every
     state transition is computed by ``breaker.py`` and persisted by the
-    store. ``__aenter__`` calls :meth:`BreakerStore.acquire` and either
+    store. ``__aenter__`` calls :meth:`BreakerStore.aacquire` and either
     enters the body (``AllowCall`` / ``ProbeCall``) or raises
     :exc:`BreakerOpenError` (``RejectCall``). ``__aexit__`` records the
     outcome and dispatches the relevant event(s).
@@ -98,14 +98,14 @@ class AsyncCircuitBreaker:
         """Immutable :class:`BreakerConfig` set at registry construction."""
         return self._config
 
-    async def snapshot(self) -> BreakerStatus:
+    async def asnapshot(self) -> BreakerStatus:
         """Return an immutable :class:`BreakerStatus` (single Redis round-trip).
 
         The runtime computes ``retry_after`` from the snapshot's
         ``opened_at`` and the configured ``ttl``; ``state == "closed"``
         always reports ``retry_after = 0.0``.
         """
-        snap = await self._store.peek(self._name)
+        snap = await self._store.apeek(self._name)
         if snap is None:
             return BreakerStatus(
                 name=self._name,
@@ -140,7 +140,7 @@ class AsyncCircuitBreaker:
         return max(self._config.ttl - elapsed, 0.0)
 
     async def __aenter__(self) -> Self:
-        decision, post_snapshot = await self._store.acquire(
+        decision, post_snapshot = await self._store.aacquire(
             self._name,
             threshold=self._config.threshold,
             ttl_seconds=self._config.ttl,
@@ -168,9 +168,9 @@ class AsyncCircuitBreaker:
         pre_snapshot = stack[-1]
         _pre_snapshot_stack.set(stack[:-1])
         if exc is None:
-            new_snap = await self._store.record_success(self._name, counting=self._config.counting)
-            await self._maybe_emit_recovery(pre_snapshot, new_snap)
-            await self._maybe_emit_state_change(pre_snapshot, new_snap)
+            new_snap = await self._store.arecord_success(self._name, counting=self._config.counting)
+            await self._amaybe_emit_recovery(pre_snapshot, new_snap)
+            await self._amaybe_emit_state_change(pre_snapshot, new_snap)
             return
         if not self._is_failure_recordable(exc):
             return
@@ -183,7 +183,7 @@ class AsyncCircuitBreaker:
         # notified of the storage failure via `on_storage_failure`, so we
         # suppress the wrapper here and let the user exception propagate.
         try:
-            new_snap = await self._store.record_failure(
+            new_snap = await self._store.arecord_failure(
                 self._name,
                 threshold=self._config.threshold,
                 ttl_seconds=self._config.ttl,
@@ -192,7 +192,7 @@ class AsyncCircuitBreaker:
         except CircuitStorageError:
             return
         exc_type_obj = type(exc)
-        await self._dispatcher.dispatch(
+        await self._dispatcher.adispatch(
             BreakerFailed(
                 name=self._name,
                 exception_repr=repr(exc),
@@ -202,7 +202,7 @@ class AsyncCircuitBreaker:
                 failure_rate=new_snap.window.rate if new_snap.window is not None else None,
             ),
         )
-        await self._maybe_emit_state_change(pre_snapshot, new_snap)
+        await self._amaybe_emit_state_change(pre_snapshot, new_snap)
 
     def _is_failure_recordable(self, exc: BaseException) -> bool:
         """``BreakerConfig.exclude`` and ``CancelledError`` short-circuit failure recording."""
@@ -212,7 +212,7 @@ class AsyncCircuitBreaker:
             return True
         return not isinstance(exc, self._config.exclude)
 
-    async def _maybe_emit_recovery(
+    async def _amaybe_emit_recovery(
         self,
         pre_snapshot: Snapshot,
         new_snap: Snapshot,
@@ -221,11 +221,11 @@ class AsyncCircuitBreaker:
         if not new_snap.is_authoritative:
             return
         if pre_snapshot.state == "half_opened" and new_snap.state == "closed":
-            await self._dispatcher.dispatch(
+            await self._dispatcher.adispatch(
                 BreakerRecovered(name=self._name, generation=new_snap.generation),
             )
 
-    async def _maybe_emit_state_change(
+    async def _amaybe_emit_state_change(
         self,
         pre_snapshot: Snapshot,
         new_snap: Snapshot,
@@ -235,7 +235,7 @@ class AsyncCircuitBreaker:
             return
         if pre_snapshot.state == new_snap.state:
             return
-        await self._dispatcher.dispatch(
+        await self._dispatcher.adispatch(
             BreakerStateChanged(
                 name=self._name,
                 from_state=pre_snapshot.state,
@@ -253,7 +253,7 @@ _E = TypeVar("_E", bound=BreakerEvent)
 class AsyncBreakerRegistry:
     """Identity Map of :class:`AsyncCircuitBreaker` instances + decorator + events.
 
-    ``get(name)`` returns the same :class:`AsyncCircuitBreaker` instance
+    ``aget(name)`` returns the same :class:`AsyncCircuitBreaker` instance
     every time the registry sees that name; ``__call__(name)`` returns a
     decorator that wraps an async function in a fresh ``async with``;
     ``on(event_type, handler)`` subscribes ``handler`` to events of type
@@ -292,22 +292,22 @@ class AsyncBreakerRegistry:
         """The underlying :class:`BreakerStore` (for advanced direct access)."""
         return self._store
 
-    async def initialize(self) -> None:
+    async def ainitialize(self) -> None:
         """Initialise the underlying store (no-op for in-memory; loads Lua for Redis)."""
         async with self._init_lock:
             if self._initialized:
                 return
-            await self._store.initialize()
+            await self._store.ainitialize()
             self._initialized = True
 
-    async def get(
+    async def aget(
         self,
         name: str,
         *,
         override: BreakerConfig | None = None,
     ) -> AsyncCircuitBreaker:
         """Return the :class:`AsyncCircuitBreaker` for ``name`` (Identity Map)."""
-        await self.initialize()
+        await self.ainitialize()
         async with self._dict_lock:
             existing = self._breakers.get(name)
             if existing is not None:
@@ -320,7 +320,7 @@ class AsyncBreakerRegistry:
                 dispatcher=self._dispatcher,
             )
             self._breakers[name] = breaker
-        await self._dispatcher.dispatch(
+        await self._dispatcher.adispatch(
             BreakerCreated(name=name, config_repr=repr(config)),
         )
         return breaker
@@ -334,14 +334,14 @@ class AsyncBreakerRegistry:
         [Callable[P, Awaitable[R]]],
         Callable[P, Awaitable[R]],
     ]:
-        """Return a decorator that wraps an async function in ``async with self.get(name):``."""
+        """Return a decorator that wraps an async function in ``async with self.aget(name):``."""
 
         def _decorator(
             func: Callable[P, Awaitable[R]],
         ) -> Callable[P, Awaitable[R]]:
             @wraps(func)
             async def _wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
-                breaker = await self.get(name, override=override)
+                breaker = await self.aget(name, override=override)
                 async with breaker:
                     return await func(*args, **kwargs)
 
@@ -372,7 +372,7 @@ class AsyncBreakerRegistry:
         Initialises the underlying store eagerly so the first user call
         does not pay the SCRIPT LOAD round-trip.
         """
-        await self.initialize()
+        await self.ainitialize()
         return self
 
     async def __aexit__(

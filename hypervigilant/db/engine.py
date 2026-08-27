@@ -42,14 +42,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlalchemy.pool import NullPool
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from hypervigilant.db.config import AsyncDriver, DBConfig, PoolingMode, SSLConfig, SSLMode
-from hypervigilant.db.errors import translate_error
-from hypervigilant.loggers import get_logger
+from ..loggers import get_logger
+from .config import AsyncDriver, DBConfig, PoolingMode, SSLConfig, SSLMode
+from .errors import translate_error
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.interfaces import ExceptionContext
 
-    from hypervigilant.db.types import SessionFactory
+    from .types import SessionFactory
 
 __all__ = ["async_url_for", "build_engine", "build_session_factory"]
 
@@ -176,7 +176,7 @@ def _translate_dbapi_error(context: ExceptionContext) -> None:
     Disconnects are deliberately left alone: SQLAlchemy's pool relies on seeing its
     own exception to invalidate the connection and retry, so replacing it here would
     break ``pool_pre_ping``. Those surface at the scope boundary instead, where
-    :func:`~hypervigilant.db.session.session_scope` translates them.
+    :func:`~hypervigilant.db.session.asession_scope` translates them.
     """
     if context.is_disconnect or context.sqlalchemy_exception is None:
         return

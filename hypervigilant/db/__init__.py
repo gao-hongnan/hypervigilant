@@ -35,13 +35,13 @@ prefix belongs to the consuming application's own settings class::
 
     @app.get("/readyz")
     async def readyz(response: Response) -> HealthReport:
-        report = await db.health.check()          # writer; the reader can be absent
+        report = await db.health.acheck()          # writer; the reader can be absent
         response.status_code = 200 if report.ok else 503
         return report
 
     @app.post("/orders")
     async def place(draft: OrderDraft) -> OrderId:
-        return await transactional(db.begin, lambda s: OrderRepository(s).place(draft))
+        return await atransactional(db.begin, lambda s: OrderRepository(s).place(draft))
 
     @app.get("/reports/daily")
     async def daily() -> Report:
@@ -62,7 +62,7 @@ if find_spec("sqlalchemy") is None:  # pragma: no cover
     _REASON = "hypervigilant.db requires the 'postgres' extra: uv add 'hypervigilant[postgres]'"
     raise ImportError(_REASON)
 
-from hypervigilant.db.config import (
+from .config import (
     AsyncDriver,
     DBConfig,
     IsolationLevel,
@@ -71,8 +71,8 @@ from hypervigilant.db.config import (
     SSLConfig,
     SSLMode,
 )
-from hypervigilant.db.engine import async_url_for, build_engine, build_session_factory
-from hypervigilant.db.errors import (
+from .engine import async_url_for, build_engine, build_session_factory
+from .errors import (
     DatabaseError,
     DatabaseUnavailableError,
     IntegrityViolationError,
@@ -80,18 +80,18 @@ from hypervigilant.db.errors import (
     UnclassifiedDatabaseError,
     translate_error,
 )
-from hypervigilant.db.health import HealthProbe, HealthReport, PoolHealthProbe, PoolStats
-from hypervigilant.db.runtime.asyncio import Database
-from hypervigilant.db.session import SessionProvider, session_scope
-from hypervigilant.db.transaction import (
+from .health import HealthProbe, HealthReport, PoolHealthProbe, PoolStats
+from .runtime.asyncio import Database
+from .session import SessionProvider, asession_scope
+from .transaction import (
     CONNECTION_RETRY,
     SERIALIZATION_RETRY,
     ScopeFactory,
     TransactionScope,
-    transactional,
-    unit_of_work,
+    atransactional,
+    aunit_of_work,
 )
-from hypervigilant.db.types import NAMING_CONVENTION, PydanticJSON, SessionFactory, build_metadata
+from .types import NAMING_CONVENTION, PydanticJSON, SessionFactory, build_metadata
 
 __all__ = [
     "CONNECTION_RETRY",
@@ -123,8 +123,8 @@ __all__ = [
     "build_engine",
     "build_metadata",
     "build_session_factory",
-    "session_scope",
-    "transactional",
-    "unit_of_work",
+    "asession_scope",
+    "atransactional",
+    "aunit_of_work",
     "translate_error",
 ]

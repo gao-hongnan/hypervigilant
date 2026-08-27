@@ -39,14 +39,14 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from hypervigilant.db.errors import translate_error
+from .errors import translate_error
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
-    from hypervigilant.db.types import SessionFactory
+    from .types import SessionFactory
 
-__all__ = ["SessionProvider", "session_scope"]
+__all__ = ["SessionProvider", "asession_scope"]
 
 
 @runtime_checkable
@@ -65,12 +65,12 @@ class SessionProvider(Protocol):
     """
 
     def session(self) -> AbstractAsyncContextManager[AsyncSession]:
-        """Open a session. No transaction is begun; see :func:`~hypervigilant.db.transaction.unit_of_work`."""
+        """Open a session. No transaction is begun; see :func:`~hypervigilant.db.transaction.aunit_of_work`."""
         ...
 
 
 @asynccontextmanager
-async def session_scope(factory: SessionFactory, *, operation: str) -> AsyncGenerator[AsyncSession]:
+async def asession_scope(factory: SessionFactory, *, operation: str) -> AsyncGenerator[AsyncSession]:
     """Yield a session, translating any SQLAlchemy failure on the way out.
 
     Parameters

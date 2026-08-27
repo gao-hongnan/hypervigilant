@@ -28,7 +28,7 @@ function-scoped loop::
 
     @pytest.fixture
     async def sessions(db: Database) -> AsyncGenerator[SessionProvider]:
-        async with rollback_scope(db) as provider:
+        async with arollback_scope(db) as provider:
             yield provider
 """
 
@@ -43,11 +43,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
 
-    from hypervigilant.db.health import HealthReport
-    from hypervigilant.db.runtime.asyncio import Database
-    from hypervigilant.db.session import SessionProvider
+    from .health import HealthReport
+    from .runtime.asyncio import Database
+    from .session import SessionProvider
 
-__all__ = ["StaticHealthProbe", "rollback_scope"]
+__all__ = ["StaticHealthProbe", "arollback_scope"]
 
 
 class _RollbackProvider:
@@ -72,7 +72,7 @@ class _RollbackProvider:
 
 
 @asynccontextmanager
-async def rollback_scope(db: Database) -> AsyncGenerator[SessionProvider]:
+async def arollback_scope(db: Database) -> AsyncGenerator[SessionProvider]:
     """Yield a provider whose every session rolls back when the block exits.
 
     ``join_transaction_mode="create_savepoint"`` is the SQLAlchemy 2.0 mechanism that
@@ -89,7 +89,7 @@ async def rollback_scope(db: Database) -> AsyncGenerator[SessionProvider]:
     Examples
     --------
     >>> import inspect
-    >>> inspect.isasyncgenfunction(rollback_scope.__wrapped__)
+    >>> inspect.isasyncgenfunction(arollback_scope.__wrapped__)
     True
     """
     async with db.engine.connect() as connection:
@@ -111,7 +111,7 @@ class StaticHealthProbe:
     >>> import asyncio
     >>> from hypervigilant.db.health import HealthReport
     >>> probe = StaticHealthProbe(HealthReport(ok=False, detail="down", latency_ms=None, pool=None))
-    >>> asyncio.run(probe.check()).detail
+    >>> asyncio.run(probe.acheck()).detail
     'down'
     """
 
@@ -120,5 +120,5 @@ class StaticHealthProbe:
     def __init__(self, report: HealthReport) -> None:
         self._report = report
 
-    async def check(self) -> HealthReport:
+    async def acheck(self) -> HealthReport:
         return self._report

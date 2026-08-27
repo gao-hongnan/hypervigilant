@@ -94,7 +94,7 @@ async def test_reader_endpoint_serves_reads_and_refuses_writes(db_config: DBConf
     )
     async with Database(clustered) as db:
         assert db.reader_health is not None
-        assert (await db.reader_health.check()).ok is True
+        assert (await db.reader_health.acheck()).ok is True
 
         async with db.reader_session() as session:
             assert (await session.execute(text("SELECT 1"))).scalar_one() == 1

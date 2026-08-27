@@ -16,7 +16,7 @@ from sqlalchemy import Column, Integer, String, Table, UniqueConstraint, select,
 from hypervigilant.db.errors import IntegrityViolationError
 from hypervigilant.db.runtime.asyncio import Database
 from hypervigilant.db.session import SessionProvider
-from hypervigilant.db.transaction import transactional
+from hypervigilant.db.transaction import atransactional
 from hypervigilant.db.types import PydanticJSON, build_metadata
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
@@ -104,7 +104,7 @@ async def test_transactional_commits_and_rolls_back(database: Database) -> None:
         await session.execute(DOCS.insert(), {"id": 10, "ref": "committed", "payload": None})  # type: ignore[attr-defined]
         return 10
 
-    assert await transactional(database.begin, insert_one) == 10
+    assert await atransactional(database.begin, insert_one) == 10
 
     async def insert_then_fail(session: object) -> None:
         await session.execute(DOCS.insert(), {"id": 11, "ref": "rolled-back", "payload": None})  # type: ignore[attr-defined]
@@ -112,7 +112,7 @@ async def test_transactional_commits_and_rolls_back(database: Database) -> None:
         raise RuntimeError(reason)
 
     with pytest.raises(RuntimeError, match="deliberate"):
-        await transactional(database.begin, insert_then_fail)
+        await atransactional(database.begin, insert_then_fail)
 
     async with database.session() as session:
         refs = set((await session.execute(select(DOCS.c.ref))).scalars().all())
@@ -135,7 +135,7 @@ async def test_rollback_scope_isolates_even_across_commit(sessions: SessionProvi
 
 
 async def test_health_probe_reports_ready(database: Database) -> None:
-    report = await database.health.check()
+    report = await database.health.acheck()
     assert report.ok is True
     assert report.latency_ms is not None
     assert report.pool is not None
