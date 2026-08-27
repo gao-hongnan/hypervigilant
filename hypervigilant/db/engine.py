@@ -56,6 +56,7 @@ __all__ = ["async_url_for", "build_engine", "build_session_factory"]
 logger = get_logger(__name__)
 
 _VERIFYING_MODES = frozenset({SSLMode.VERIFY_CA, SSLMode.VERIFY_FULL})
+_PLAINTEXT_FALLBACK_MODES = frozenset({SSLMode.ALLOW, SSLMode.PREFER})
 
 
 def async_url_for(config: DBConfig) -> URL:
@@ -112,23 +113,42 @@ def async_url_for(config: DBConfig) -> URL:
 def _ssl_connect_argument(ssl_config: SSLConfig) -> ssl.SSLContext | str:
     """Build the ``ssl`` connect argument for asyncpg.
 
-    Returns a real :class:`ssl.SSLContext` for the verifying modes, because that is
-    the only shape that can carry a CA bundle -- the mode strings asyncpg accepts
-    resolve ``verify-full`` against ``~/.postgresql/root.crt`` and fail when it is
-    absent. Non-verifying modes pass their libpq spelling through unchanged.
+    Returns a real :class:`ssl.SSLContext` whenever certificate files need to be
+    loaded. Otherwise non-verifying modes pass their libpq spelling through
+    unchanged. Asyncpg's plaintext-fallback modes reject client credentials because
+    an explicit context would silently turn those modes into TLS-only connections.
 
     Examples
     --------
     >>> _ssl_connect_argument(SSLConfig(mode=SSLMode.REQUIRE))
     'require'
     """
-    if ssl_config.mode not in _VERIFYING_MODES:
+    if ssl_config.cert is not None and ssl_config.mode in _PLAINTEXT_FALLBACK_MODES:
+        message = (
+            f"asyncpg cannot preserve plaintext fallback for ssl.mode {ssl_config.mode.value!r} "
+            "when ssl.cert and ssl.key require an SSLContext"
+        )
+        raise ValueError(message)
+    if ssl_config.mode not in _VERIFYING_MODES and ssl_config.cert is None:
         return ssl_config.mode.value
-    context = ssl.create_default_context(cafile=str(ssl_config.root_cert))
-    context.check_hostname = ssl_config.mode is SSLMode.VERIFY_FULL
-    context.verify_mode = ssl.CERT_REQUIRED
-    if ssl_config.cert is not None and ssl_config.key is not None:
-        context.load_cert_chain(certfile=str(ssl_config.cert), keyfile=str(ssl_config.key))
+
+    if ssl_config.mode in _VERIFYING_MODES:
+        root_cert = ssl_config.root_cert
+        if root_cert is None:
+            message = f"ssl.mode {ssl_config.mode.value!r} requires ssl.root_cert"
+            raise ValueError(message)
+        context = ssl.create_default_context(cafile=str(root_cert))
+        context.check_hostname = ssl_config.mode is SSLMode.VERIFY_FULL
+        context.verify_mode = ssl.CERT_REQUIRED
+    else:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+    cert = ssl_config.cert
+    key = ssl_config.key
+    if cert is not None and key is not None:
+        context.load_cert_chain(certfile=str(cert), keyfile=str(key))
     return context
 
 
@@ -154,6 +174,9 @@ def _connect_args(config: DBConfig) -> dict[str, Any]:
             args["sslmode"] = config.ssl.mode.value
             if config.ssl.root_cert is not None:
                 args["sslrootcert"] = str(config.ssl.root_cert)
+            if config.ssl.cert is not None and config.ssl.key is not None:
+                args["sslcert"] = str(config.ssl.cert)
+                args["sslkey"] = str(config.ssl.key)
     return args
 
 

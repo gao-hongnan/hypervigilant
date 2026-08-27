@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 
 import pytest
+from pydantic import ValidationError
 from tenacity import (
     AsyncRetrying,
     RetryCallState,
@@ -83,6 +84,10 @@ class TestRetryConfig:
         with pytest.raises(ValueError):
             RetryConfig(multiplier=-1.0)
 
+    def test_wait_min_above_wait_max_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="wait_min"):
+            RetryConfig(wait_min=0.75, wait_max=0.5)
+
     @pytest.mark.unit
     def test_exp_base_below_one_rejected(self) -> None:
         with pytest.raises(ValueError):
@@ -102,6 +107,16 @@ class TestRetryConfig:
         assert config.wait_max == 0
         assert config.multiplier == 0
         assert config.exp_base == 1
+
+    def test_is_frozen(self) -> None:
+        config = RetryConfig()
+
+        with pytest.raises(ValidationError, match="frozen"):
+            config.max_attempts = 1  # type: ignore[misc]
+
+    def test_rejects_unknown_fields(self) -> None:
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            RetryConfig.model_validate({"unknown": True})
 
 
 class TestRetryMode:

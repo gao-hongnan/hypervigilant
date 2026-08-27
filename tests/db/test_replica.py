@@ -85,6 +85,38 @@ def test_reader_host_rejects_a_dsn() -> None:
         ReaderEndpoint(host="postgresql://app:pw@reader/app")
 
 
+@pytest.mark.unit
+def test_reader_derivation_revalidates_cross_field_invariants() -> None:
+    """A copied config can bypass validation; derivation must restore the boundary."""
+    invalid = _config(reader=ReaderEndpoint(host="r.example.com")).model_copy(update={"command_timeout_seconds": 1.0})
+
+    with pytest.raises(ValidationError, match="command_timeout_seconds"):
+        invalid.reader_config()
+
+
+@pytest.mark.unit
+def test_reader_derivation_preserves_subclass_and_revalidates() -> None:
+    class ExtendedDBConfig(DBConfig):
+        region: str
+
+    config = ExtendedDBConfig(
+        host="writer.example.com",
+        user="app",
+        password=SecretStr("s"),
+        database="app",
+        region="sg",
+        reader=ReaderEndpoint(host="reader.example.com"),
+    )
+
+    reader = config.reader_config()
+    assert isinstance(reader, ExtendedDBConfig)
+    assert reader.region == "sg"
+
+    invalid = config.model_copy(update={"command_timeout_seconds": 1.0})
+    with pytest.raises(ValidationError, match="command_timeout_seconds"):
+        invalid.reader_config()
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
 async def test_reader_endpoint_serves_reads_and_refuses_writes(db_config: DBConfig) -> None:

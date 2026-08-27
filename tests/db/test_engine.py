@@ -6,11 +6,12 @@ import contextlib
 import io
 import ssl
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
-from hypervigilant.db.config import DBConfig, PoolingMode, SSLConfig, SSLMode
+from hypervigilant.db.config import AsyncDriver, DBConfig, PoolingMode, SSLConfig, SSLMode
 from hypervigilant.db.engine import _connect_args, _ssl_connect_argument, async_url_for, build_engine
 
 pytestmark = pytest.mark.unit
@@ -55,6 +56,42 @@ def test_non_verifying_ssl_passes_its_libpq_spelling() -> None:
     assert _ssl_connect_argument(SSLConfig(mode=SSLMode.REQUIRE)) == "require"
 
 
+def test_asyncpg_require_with_client_certificate_builds_a_context(tmp_path: Path) -> None:
+    cert = tmp_path / "client.pem"
+    key = tmp_path / "client.key"
+    context = MagicMock(spec=ssl.SSLContext)
+
+    config = _config(
+        driver=AsyncDriver.ASYNCPG,
+        ssl=SSLConfig(mode=SSLMode.REQUIRE, cert=cert, key=key),
+    )
+
+    with patch("hypervigilant.db.engine.ssl.create_default_context", return_value=context):
+        result = _connect_args(config)["ssl"]
+
+    assert result is context
+    assert context.check_hostname is False
+    assert context.verify_mode is ssl.CERT_NONE
+    context.load_cert_chain.assert_called_once_with(certfile=str(cert), keyfile=str(key))
+
+
+@pytest.mark.parametrize("mode", [SSLMode.ALLOW, SSLMode.PREFER])
+def test_asyncpg_ssl_argument_defensively_rejects_client_certificate_with_plaintext_fallback(
+    tmp_path: Path, mode: SSLMode
+) -> None:
+    ssl_config = SSLConfig(mode=mode, cert=tmp_path / "client.pem", key=tmp_path / "client.key")
+
+    with pytest.raises(ValueError, match="cannot preserve plaintext fallback"):
+        _ssl_connect_argument(ssl_config)
+
+
+def test_verifying_ssl_explicitly_rejects_a_bypassed_missing_root_cert() -> None:
+    invalid = SSLConfig.model_construct(mode=SSLMode.VERIFY_FULL, root_cert=None, cert=None, key=None)
+
+    with pytest.raises(ValueError, match="root_cert"):
+        _ssl_connect_argument(invalid)
+
+
 def test_verifying_ssl_builds_a_real_context(tmp_path: Path) -> None:
     """The defect: ``ssl=require`` gave CERT_NONE, and ``verify-full`` had no CA field.
 
@@ -87,6 +124,23 @@ def test_connect_args_carry_server_settings_and_timeouts() -> None:
     assert args["timeout"] == pytest.approx(10.0)
     assert args["command_timeout"] == pytest.approx(60.0)
     assert args["prepared_statement_cache_size"] == 100
+
+
+@pytest.mark.parametrize("mode", [SSLMode.ALLOW, SSLMode.PREFER])
+def test_psycopg_plaintext_fallback_modes_carry_client_certificate_files(tmp_path: Path, mode: SSLMode) -> None:
+    cert = tmp_path / "client.pem"
+    key = tmp_path / "client.key"
+
+    args = _connect_args(
+        _config(
+            driver=AsyncDriver.PSYCOPG,
+            ssl=SSLConfig(mode=mode, cert=cert, key=key),
+        )
+    )
+
+    assert args["sslmode"] == mode.value
+    assert args["sslcert"] == str(cert)
+    assert args["sslkey"] == str(key)
 
 
 def test_transaction_pooling_adds_a_unique_statement_namer() -> None:

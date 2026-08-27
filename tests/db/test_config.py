@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr, ValidationError
 
@@ -88,6 +90,15 @@ def test_verifying_ssl_requires_a_trust_anchor() -> None:
 def test_client_certificate_and_key_travel_together() -> None:
     with pytest.raises(ValidationError, match="must be set together"):
         SSLConfig(mode=SSLMode.REQUIRE, cert="/tmp/c.pem")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("mode", [SSLMode.ALLOW, SSLMode.PREFER])
+def test_asyncpg_client_certificate_rejects_plaintext_fallback_modes(mode: SSLMode) -> None:
+    with pytest.raises(ValidationError, match="cannot preserve plaintext fallback"):
+        _config(
+            driver=AsyncDriver.ASYNCPG,
+            ssl=SSLConfig(mode=mode, cert=Path("/tmp/client.pem"), key=Path("/tmp/client.key")),
+        )
 
 
 def test_server_settings_render_as_strings() -> None:

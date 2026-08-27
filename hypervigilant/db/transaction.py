@@ -141,7 +141,12 @@ def _retrying(policy: RetryConfig) -> AsyncRetrying:
     return retry(
         RetryMode.CONTEXT_MANAGER,
         stop=stop_after_attempt(policy.max_attempts),
-        wait=wait_random_exponential(multiplier=policy.multiplier, max=policy.wait_max, exp_base=policy.exp_base),
+        wait=wait_random_exponential(
+            multiplier=policy.multiplier,
+            min=policy.wait_min,
+            max=policy.wait_max,
+            exp_base=policy.exp_base,
+        ),
         retry_condition=_retry_condition(policy),
         reraise=policy.reraise,
     )

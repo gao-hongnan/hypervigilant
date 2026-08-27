@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
 
@@ -56,6 +57,39 @@ __all__ = ["Database"]
 logger = get_logger(__name__)
 
 _STARTUP_PROBE = text("SELECT 1")
+
+
+@dataclass(frozen=True, slots=True)
+class _DatabaseResources:
+    """The engine and the two services whose lifetime it owns."""
+
+    engine: AsyncEngine
+    sessions: SessionFactory
+    health: HealthProbe
+
+
+async def _build_and_probe(
+    config: DBConfig,
+    *,
+    operation: str,
+    health_operation: str = "db.health",
+) -> _DatabaseResources:
+    """Build a complete resource bundle after proving its engine is reachable."""
+    engine = build_engine(config)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(_STARTUP_PROBE)
+        return _DatabaseResources(
+            engine=engine,
+            sessions=build_session_factory(engine),
+            health=PoolHealthProbe(engine, operation=health_operation),
+        )
+    except SQLAlchemyError as exc:
+        await engine.dispose()
+        raise translate_error(exc, operation=operation) from exc
+    except BaseException:
+        await engine.dispose()
+        raise
 
 
 class Database:
@@ -89,29 +123,21 @@ class Database:
 
     __slots__ = (
         "_config",
-        "_engine",
-        "_health",
         "_lock",
-        "_reader_engine",
-        "_reader_health",
-        "_reader_sessions",
-        "_sessions",
+        "_reader",
+        "_writer",
     )
 
     def __init__(self, config: DBConfig) -> None:
         self._config = config
-        self._engine: AsyncEngine | None = None
-        self._sessions: SessionFactory | None = None
-        self._health: HealthProbe | None = None
-        self._reader_engine: AsyncEngine | None = None
-        self._reader_sessions: SessionFactory | None = None
-        self._reader_health: HealthProbe | None = None
+        self._writer: _DatabaseResources | None = None
+        self._reader: _DatabaseResources | None = None
         self._lock = asyncio.Lock()
 
     def __repr__(self) -> str:
         target = f"{self._config.host}:{self._config.port}/{self._config.database}"
         return (
-            f"Database(driver={self._config.driver.value!r}, target={target!r}, initialized={self._engine is not None})"
+            f"Database(driver={self._config.driver.value!r}, target={target!r}, initialized={self._writer is not None})"
         )
 
     @property
@@ -133,18 +159,18 @@ class Database:
             Before :meth:`ainitialize`. Returning ``None`` would push an ``is None``
             check into every caller.
         """
-        if self._engine is None:
+        if self._writer is None:
             reason = "Database.ainitialize() has not been awaited; there is no engine yet."
             raise RuntimeError(reason)
-        return self._engine
+        return self._writer.engine
 
     @property
     def health(self) -> HealthProbe:
         """The readiness probe bound to this engine."""
-        if self._health is None:
+        if self._writer is None:
             reason = "Database.ainitialize() has not been awaited; there is no health probe yet."
             raise RuntimeError(reason)
-        return self._health
+        return self._writer.health
 
     async def ainitialize(self) -> None:
         """Build the engine and prove the database is reachable.
@@ -161,50 +187,43 @@ class Database:
             failed start leaks no connections.
         """
         async with self._lock:
-            if self._engine is not None:
+            if self._writer is not None:
                 return
-            engine = build_engine(self._config)
+            writer = await _build_and_probe(self._config, operation="db.initialize")
+            reader: _DatabaseResources | None = None
             try:
-                async with engine.connect() as connection:
-                    await connection.execute(_STARTUP_PROBE)
-            except SQLAlchemyError as exc:
-                await engine.dispose()
-                raise translate_error(exc, operation="db.initialize") from exc
-            self._engine = engine
-            self._sessions = build_session_factory(engine)
-            self._health = PoolHealthProbe(engine)
+                reader_config = self._config.reader_config()
+                if reader_config is not None:
+                    reader = await _build_and_probe(
+                        reader_config,
+                        operation="db.initialize.reader",
+                        health_operation="db.health.reader",
+                    )
+            except BaseException:
+                await writer.engine.dispose()
+                raise
 
-            reader_config = self._config.reader_config()
-            if reader_config is not None:
-                reader_engine = build_engine(reader_config)
-                try:
-                    async with reader_engine.connect() as connection:
-                        await connection.execute(_STARTUP_PROBE)
-                except SQLAlchemyError as exc:
-                    await reader_engine.dispose()
-                    await engine.dispose()
-                    self._engine = self._sessions = self._health = None
-                    raise translate_error(exc, operation="db.initialize.reader") from exc
-                self._reader_engine = reader_engine
-                self._reader_sessions = build_session_factory(reader_engine)
-                self._reader_health = PoolHealthProbe(reader_engine, operation="db.health.reader")
+            self._writer = writer
+            self._reader = reader
 
             logger.info("database ready", db=self._config.model_dump(mode="json"))
 
     async def aclose(self) -> None:
         """Dispose the engine. Idempotent, and safe before :meth:`ainitialize`."""
         async with self._lock:
-            if self._engine is None:
+            if self._writer is None:
                 return
-            await self._engine.dispose()
-            if self._reader_engine is not None:
-                await self._reader_engine.dispose()
-            self._engine = None
-            self._sessions = None
-            self._health = None
-            self._reader_engine = None
-            self._reader_sessions = None
-            self._reader_health = None
+            writer = self._writer
+            reader = self._reader
+            try:
+                await writer.engine.dispose()
+            finally:
+                try:
+                    if reader is not None:
+                        await reader.engine.dispose()
+                finally:
+                    self._writer = None
+                    self._reader = None
             logger.info("database closed", dsn_target=f"{self._config.host}:{self._config.port}")
 
     @property
@@ -217,13 +236,13 @@ class Database:
         writer means this instance cannot serve. Folding them into one report would
         take an instance out of rotation for a condition it can absorb.
         """
-        return self._reader_health
+        return self._reader.health if self._reader is not None else None
 
     def _factory(self) -> SessionFactory:
-        if self._sessions is None:
+        if self._writer is None:
             reason = "Database.ainitialize() has not been awaited; there is no session factory yet."
             raise RuntimeError(reason)
-        return self._sessions
+        return self._writer.sessions
 
     def session(self) -> AbstractAsyncContextManager[AsyncSession]:
         """Open a session with no transaction begun.
@@ -250,9 +269,7 @@ class Database:
         invisible at the call site; requiring a different method name makes it a
         thing somebody chose.
         """
-        factory = self._reader_sessions
-        if factory is None:
-            return self.session()
+        factory = self._reader.sessions if self._reader is not None else self._factory()
         return asession_scope(factory, operation="db.reader_session")
 
     def begin(self) -> TransactionScope:

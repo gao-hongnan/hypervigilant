@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RetryConfig(BaseModel):
@@ -14,7 +15,7 @@ class RetryConfig(BaseModel):
     See: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid", frozen=True)
 
     max_attempts: int = Field(default=3, ge=1, description="Maximum retry attempts")
     wait_min: float = Field(default=1.0, ge=0, description="Minimum wait time in seconds")
@@ -38,3 +39,10 @@ class RetryConfig(BaseModel):
     )
 
     reraise: bool = Field(default=True, description="Reraise exception after all retries fail")
+
+    @model_validator(mode="after")
+    def _minimum_wait_does_not_exceed_maximum(self) -> Self:
+        if self.wait_min > self.wait_max:
+            message = f"wait_min ({self.wait_min}) must not exceed wait_max ({self.wait_max})"
+            raise ValueError(message)
+        return self

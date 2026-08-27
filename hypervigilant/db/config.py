@@ -95,6 +95,17 @@ parameter-injection primitive rather than a label.
 """
 
 _MILLIS_PER_SECOND: Final = 1000
+_DEFAULT_SEARCH_PATH: Final = ("public",)
+
+
+type PortNumber = Annotated[int, Field(ge=1, le=65_535)]
+"""A valid TCP port number."""
+
+type PoolSize = Annotated[int, Field(ge=1, le=200)]
+"""The bounded number of persistent connections in a pool."""
+
+type MaxOverflow = Annotated[int, Field(ge=0, le=200)]
+"""The bounded number of transient connections above the pool size."""
 
 
 type PositiveMillis = Annotated[int, Field(ge=1, le=86_400_000)]
@@ -112,6 +123,18 @@ zero seconds" a validation error rather than an unlimited statement.
 
 type SQLIdentifier = Annotated[str, Field(min_length=1, max_length=_MAX_IDENTIFIER_BYTES, pattern=_IDENTIFIER_PATTERN)]
 """A single unquoted SQL identifier, length-bounded to ``NAMEDATALEN - 1``."""
+
+
+def _reject_dsn_like_host(value: str, *, field: str) -> str:
+    """Return a normalized bare host or reject DSN-shaped input."""
+    host = value.strip()
+    if not host:
+        message = f"{field} must not be blank"
+        raise ValueError(message)
+    if "://" in host or "@" in host or "/" in host:
+        message = f"{field} must be a bare hostname or address, not a DSN"
+        raise ValueError(message)
+    return host
 
 
 class AsyncDriver(StrEnum):
@@ -342,21 +365,14 @@ class ReaderEndpoint(BaseModel):
     )
 
     host: Annotated[str, Field(min_length=1, max_length=255)]
-    port: Annotated[int, Field(ge=1, le=65_535)] | None = None
-    pool_size: Annotated[int, Field(ge=1, le=200)] | None = None
-    max_overflow: Annotated[int, Field(ge=0, le=200)] | None = None
+    port: PortNumber | None = None
+    pool_size: PoolSize | None = None
+    max_overflow: MaxOverflow | None = None
 
     @field_validator("host", mode="after")
     @classmethod
     def _host_is_a_host_not_a_dsn(cls: type[Self], value: str) -> str:
-        host = value.strip()
-        if not host:
-            message = "reader.host must not be blank"
-            raise ValueError(message)
-        if "://" in host or "@" in host or "/" in host:
-            message = "reader.host must be a bare hostname or address, not a DSN"
-            raise ValueError(message)
-        return host
+        return _reject_dsn_like_host(value, field="reader.host")
 
 
 class DBConfig(BaseModel):
@@ -468,12 +484,12 @@ class DBConfig(BaseModel):
     driver: AsyncDriver = AsyncDriver.ASYNCPG
 
     host: Annotated[str, Field(min_length=1, max_length=255)]
-    port: Annotated[int, Field(ge=1, le=65_535)] = 5432
+    port: PortNumber = 5432
     user: SQLIdentifier
     password: SecretStr
     database: SQLIdentifier
 
-    search_path: Annotated[tuple[SQLIdentifier, ...], Field(min_length=1, max_length=16)] = ("public",)
+    search_path: Annotated[tuple[SQLIdentifier, ...], Field(min_length=1, max_length=16)] = _DEFAULT_SEARCH_PATH
     application_name: Annotated[
         str,
         Field(min_length=1, max_length=_MAX_IDENTIFIER_BYTES, pattern=_APPLICATION_NAME_PATTERN),
@@ -485,8 +501,8 @@ class DBConfig(BaseModel):
     lock_timeout_ms: PositiveMillis | None = 5_000
     idle_in_transaction_session_timeout_ms: PositiveMillis | None = 60_000
 
-    pool_size: Annotated[int, Field(ge=1, le=200)] = 10
-    max_overflow: Annotated[int, Field(ge=0, le=200)] = 10
+    pool_size: PoolSize = 10
+    max_overflow: MaxOverflow = 10
     pool_timeout_seconds: Annotated[float, Field(gt=0.0, le=300.0)] = 30.0
     pool_recycle_seconds: Annotated[int, Field(ge=60, le=86_400)] | None = 1_800
     pool_pre_ping: bool = True
@@ -514,17 +530,22 @@ class DBConfig(BaseModel):
         masking, so it reaches the first log line that renders the config.
         The message never echoes the offending value for the same reason.
         """
-        host = value.strip()
-        if not host:
-            message = "host must not be blank"
-            raise ValueError(message)
-        if "://" in host or "@" in host or "/" in host:
+        return _reject_dsn_like_host(value, field="host")
+
+    @model_validator(mode="after")
+    def _asyncpg_client_certificate_preserves_ssl_mode(self) -> Self:
+        """Reject an SSLContext shape that would erase asyncpg's fallback modes."""
+        if (
+            self.driver is AsyncDriver.ASYNCPG
+            and self.ssl.cert is not None
+            and self.ssl.mode in {SSLMode.ALLOW, SSLMode.PREFER}
+        ):
             message = (
-                "host must be a bare hostname or address, not a DSN; a pasted DSN puts the password "
-                "into an unmasked field. Set host, port, user, password and database separately."
+                f"asyncpg cannot preserve plaintext fallback for ssl.mode {self.ssl.mode.value!r} "
+                "when ssl.cert and ssl.key require an SSLContext; use ssl.mode 'require' or the psycopg driver"
             )
             raise ValueError(message)
-        return host
+        return self
 
     @model_validator(mode="after")
     def _client_timeout_outlasts_server_timeout(self) -> Self:
@@ -583,7 +604,7 @@ class DBConfig(BaseModel):
         offenders: list[str] = []
         if self.prepared_statement_cache_size != 0:
             offenders.append(f"prepared_statement_cache_size={self.prepared_statement_cache_size}")
-        if self.search_path != ("public",):
+        if self.search_path != _DEFAULT_SEARCH_PATH:
             offenders.append(f"search_path={self.search_path}")
         if self.idle_in_transaction_session_timeout_ms is not None:
             offenders.append(f"idle_in_transaction_session_timeout_ms={self.idle_in_transaction_session_timeout_ms}")
@@ -659,7 +680,7 @@ class DBConfig(BaseModel):
             settings["idle_in_transaction_session_timeout"] = str(self.idle_in_transaction_session_timeout_ms)
         return settings
 
-    def reader_config(self) -> DBConfig | None:
+    def reader_config(self) -> Self | None:
         """Derive the reader's own :class:`DBConfig`, or ``None`` when none is configured.
 
         ``read_only=True`` is set here rather than left to the caller, and it is not
@@ -691,8 +712,9 @@ class DBConfig(BaseModel):
         """
         if self.reader is None:
             return None
-        return self.model_copy(
-            update={
+        data = self.model_dump()
+        data.update(
+            {
                 "host": self.reader.host,
                 "port": self.reader.port if self.reader.port is not None else self.port,
                 "pool_size": self.reader.pool_size if self.reader.pool_size is not None else self.pool_size,
@@ -703,3 +725,4 @@ class DBConfig(BaseModel):
                 "read_only": True,
             }
         )
+        return type(self).model_validate(data)
