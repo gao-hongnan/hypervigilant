@@ -1,0 +1,130 @@
+"""Async PostgreSQL substrate: config, engine, sessions, transactions, health.
+
+Requires the ``postgres`` extra::
+
+    uv add 'hypervigilant[postgres]'
+
+Unlike :mod:`hypervigilant.circuit_breaker` -- whose Redis client is injected as a
+*value*, so the driver need never be imported -- this package cannot defer its
+dependency: :class:`~hypervigilant.db.types.PydanticJSON` subclasses a SQLAlchemy
+class at class-definition time. The guard therefore sits at the subpackage door, and
+``import hypervigilant`` remains free of it because the top-level package does not
+import this one.
+
+Examples
+--------
+>>> from pydantic import SecretStr
+>>> config = DBConfig(host="db", user="app", password=SecretStr("s"), database="app")
+>>> db = Database(config)
+>>> db.config.driver
+<AsyncDriver.ASYNCPG: 'postgresql+asyncpg'>
+
+The intended wiring, in full. Nothing in this package reads the environment -- the
+prefix belongs to the consuming application's own settings class::
+
+    class AppSettings(BaseSettings):
+        model_config = SettingsConfigDict(env_prefix="MYAPP_", env_nested_delimiter="__")
+        db: DBConfig          # MYAPP_DB__HOST, MYAPP_DB__PASSWORD, MYAPP_DB__READER__HOST
+
+    db = Database(AppSettings().db)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async with db:        # initialize(): engines, session factories, SELECT 1
+            yield             # aclose(): dispose writer and reader
+
+    @app.get("/readyz")
+    async def readyz(response: Response) -> HealthReport:
+        report = await db.health.check()          # writer; the reader can be absent
+        response.status_code = 200 if report.ok else 503
+        return report
+
+    @app.post("/orders")
+    async def place(draft: OrderDraft) -> OrderId:
+        return await transactional(db.begin, lambda s: OrderRepository(s).place(draft))
+
+    @app.get("/reports/daily")
+    async def daily() -> Report:
+        async with db.reader_session() as session:   # replica, or writer if unconfigured
+            return await build_report(session)
+
+Two tokens carry the safety properties. ``db.begin`` is passed *uncalled*, which is
+what makes retrying inside a poisoned transaction inexpressible -- see
+:mod:`hypervigilant.db.transaction`. And ``reader_session`` is spelled differently
+from ``session``, so routing a read to a possibly-lagging replica is a thing somebody
+chose rather than something inferred from flush state; ``begin`` has no reader
+variant at all, so a transaction cannot land on one.
+"""
+
+from importlib.util import find_spec
+
+if find_spec("sqlalchemy") is None:  # pragma: no cover
+    _REASON = "hypervigilant.db requires the 'postgres' extra: uv add 'hypervigilant[postgres]'"
+    raise ImportError(_REASON)
+
+from hypervigilant.db.config import (
+    AsyncDriver,
+    DBConfig,
+    IsolationLevel,
+    PoolingMode,
+    ReaderEndpoint,
+    SSLConfig,
+    SSLMode,
+)
+from hypervigilant.db.engine import async_url_for, build_engine, build_session_factory
+from hypervigilant.db.errors import (
+    DatabaseError,
+    DatabaseUnavailableError,
+    IntegrityViolationError,
+    TransactionConflictError,
+    UnclassifiedDatabaseError,
+    translate_error,
+)
+from hypervigilant.db.health import HealthProbe, HealthReport, PoolHealthProbe, PoolStats
+from hypervigilant.db.runtime.asyncio import Database
+from hypervigilant.db.session import SessionProvider, session_scope
+from hypervigilant.db.transaction import (
+    CONNECTION_RETRY,
+    SERIALIZATION_RETRY,
+    ScopeFactory,
+    TransactionScope,
+    transactional,
+    unit_of_work,
+)
+from hypervigilant.db.types import NAMING_CONVENTION, PydanticJSON, SessionFactory, build_metadata
+
+__all__ = [
+    "CONNECTION_RETRY",
+    "NAMING_CONVENTION",
+    "SERIALIZATION_RETRY",
+    "AsyncDriver",
+    "DBConfig",
+    "Database",
+    "DatabaseError",
+    "DatabaseUnavailableError",
+    "HealthProbe",
+    "HealthReport",
+    "IntegrityViolationError",
+    "IsolationLevel",
+    "PoolHealthProbe",
+    "PoolStats",
+    "PoolingMode",
+    "ReaderEndpoint",
+    "PydanticJSON",
+    "SSLConfig",
+    "SSLMode",
+    "ScopeFactory",
+    "SessionFactory",
+    "SessionProvider",
+    "TransactionConflictError",
+    "TransactionScope",
+    "UnclassifiedDatabaseError",
+    "async_url_for",
+    "build_engine",
+    "build_metadata",
+    "build_session_factory",
+    "session_scope",
+    "transactional",
+    "unit_of_work",
+    "translate_error",
+]
