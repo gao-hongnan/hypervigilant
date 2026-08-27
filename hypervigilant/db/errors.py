@@ -129,7 +129,7 @@ class DatabaseError(Exception):
             reason = "DatabaseError is a base type; raise one of its leaves."
             raise TypeError(reason)
         super().__init__(message)
-        self.operation = operation
+        self.operation = str(operation)
         self.sqlstate = sqlstate
 
 

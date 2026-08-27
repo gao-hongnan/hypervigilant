@@ -19,6 +19,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import QueuePool
 
+from .operations import DatabaseOperation
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -107,9 +109,9 @@ class PoolHealthProbe:
 
     __slots__ = ("_engine", "_operation")
 
-    def __init__(self, engine: AsyncEngine, *, operation: str = "db.health") -> None:
+    def __init__(self, engine: AsyncEngine, *, operation: str = DatabaseOperation.HEALTH) -> None:
         self._engine = engine
-        self._operation = operation
+        self._operation = str(operation)
 
     def _pool_stats(self) -> PoolStats | None:
         """Read occupancy, or ``None`` for pools that do not track it (e.g. ``NullPool``)."""

@@ -45,6 +45,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ..loggers import get_logger
 from .config import AsyncDriver, DBConfig, PoolingMode, SSLConfig, SSLMode
 from .errors import translate_error
+from .operations import DatabaseOperation
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.interfaces import ExceptionContext
@@ -203,7 +204,10 @@ def _translate_dbapi_error(context: ExceptionContext) -> None:
     """
     if context.is_disconnect or context.sqlalchemy_exception is None:
         return
-    raise translate_error(context.sqlalchemy_exception, operation="db.statement") from context.original_exception
+    raise translate_error(
+        context.sqlalchemy_exception,
+        operation=DatabaseOperation.STATEMENT,
+    ) from context.original_exception
 
 
 def _install_error_translation(engine: AsyncEngine) -> None:

@@ -81,6 +81,7 @@ from .errors import (
     translate_error,
 )
 from .health import HealthProbe, HealthReport, PoolHealthProbe, PoolStats
+from .operations import DatabaseOperation
 from .runtime.asyncio import Database
 from .session import SessionProvider, asession_scope
 from .transaction import (
@@ -101,6 +102,7 @@ __all__ = [
     "DBConfig",
     "Database",
     "DatabaseError",
+    "DatabaseOperation",
     "DatabaseUnavailableError",
     "HealthProbe",
     "HealthReport",

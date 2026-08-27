@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from hypervigilant.db.config import DBConfig, ReaderEndpoint
 from hypervigilant.db.errors import UnclassifiedDatabaseError
+from hypervigilant.db.operations import DatabaseOperation
 from hypervigilant.db.runtime.asyncio import Database
 
 pytestmark = pytest.mark.unit
@@ -45,7 +46,7 @@ async def test_reader_fallback_retains_reader_operation_on_failure() -> None:
                 raise SQLAlchemyError("reader failed")
         await database.aclose()
 
-    assert caught.value.operation == "db.reader_session"
+    assert caught.value.operation == DatabaseOperation.READER_SESSION
 
 
 @pytest.mark.asyncio
@@ -76,7 +77,7 @@ async def test_reader_initialize_failure_disposes_both_engines_and_leaves_databa
     ):
         await database.ainitialize()
 
-    assert caught.value.operation == "db.initialize.reader"
+    assert caught.value.operation == DatabaseOperation.INITIALIZE_READER
     writer.dispose.assert_awaited_once()
     reader.dispose.assert_awaited_once()
     with pytest.raises(RuntimeError, match="there is no engine yet"):

@@ -40,6 +40,7 @@ from ...loggers import get_logger
 from ..engine import build_engine, build_session_factory
 from ..errors import translate_error
 from ..health import PoolHealthProbe
+from ..operations import DatabaseOperation
 from ..session import asession_scope
 from ..transaction import aunit_of_work
 
@@ -72,7 +73,7 @@ async def _build_and_probe(
     config: DBConfig,
     *,
     operation: str,
-    health_operation: str = "db.health",
+    health_operation: str = DatabaseOperation.HEALTH,
 ) -> _DatabaseResources:
     """Build a complete resource bundle after proving its engine is reachable."""
     engine = build_engine(config)
@@ -189,15 +190,15 @@ class Database:
         async with self._lock:
             if self._writer is not None:
                 return
-            writer = await _build_and_probe(self._config, operation="db.initialize")
+            writer = await _build_and_probe(self._config, operation=DatabaseOperation.INITIALIZE)
             reader: _DatabaseResources | None = None
             try:
                 reader_config = self._config.reader_config()
                 if reader_config is not None:
                     reader = await _build_and_probe(
                         reader_config,
-                        operation="db.initialize.reader",
-                        health_operation="db.health.reader",
+                        operation=DatabaseOperation.INITIALIZE_READER,
+                        health_operation=DatabaseOperation.HEALTH_READER,
                     )
             except BaseException:
                 await writer.engine.dispose()
@@ -250,7 +251,7 @@ class Database:
         For reads. Writes go through :meth:`begin` so the transaction boundary is
         visible at the call site.
         """
-        return asession_scope(self._factory(), operation="db.session")
+        return asession_scope(self._factory(), operation=DatabaseOperation.SESSION)
 
     def reader_session(self) -> AbstractAsyncContextManager[AsyncSession]:
         """Open a read-only session against the reader endpoint.
@@ -270,7 +271,7 @@ class Database:
         thing somebody chose.
         """
         factory = self._reader.sessions if self._reader is not None else self._factory()
-        return asession_scope(factory, operation="db.reader_session")
+        return asession_scope(factory, operation=DatabaseOperation.READER_SESSION)
 
     def begin(self) -> TransactionScope:
         """Start a transaction.
@@ -285,7 +286,7 @@ class Database:
         :data:`~hypervigilant.db.transaction.ScopeFactory` that makes retrying a
         poisoned session inexpressible.
         """
-        return aunit_of_work(self._factory(), operation="db.transaction")
+        return aunit_of_work(self._factory(), operation=DatabaseOperation.TRANSACTION)
 
     async def __aenter__(self) -> Self:
         await self.ainitialize()
