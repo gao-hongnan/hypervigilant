@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 
 class TestTopLevelImports:
     def test_top_level_imports_resolve(self) -> None:

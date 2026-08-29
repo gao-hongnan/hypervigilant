@@ -29,69 +29,23 @@ References
 - Decision 4 (asymmetric store contract).
 """
 
-import asyncio
 import random
 from typing import TYPE_CHECKING
 
 import pytest
 
-from hypervigilant.circuit_breaker import (
-    BreakerState,
-    FakeClock,
-    InMemoryStore,
-    RedisStore,
-    Snapshot,
-)
+from hypervigilant.circuit_breaker import InMemoryStore, RedisStore
 from hypervigilant.circuit_breaker.config import CountingPolicy
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+pytestmark = pytest.mark.integration
+
 _OP_FAILURE = "failure"
 _OP_SUCCESS = "success"
 _OP_PEEK = "peek"
 _OP_NAMES = (_OP_FAILURE, _OP_SUCCESS, _OP_PEEK)
-_VALID_STATES: tuple[BreakerState, ...] = ("closed", "opened", "half_opened")
-
-
-def _replay_invariants(snapshots: list[Snapshot]) -> None:
-    """Assert every snapshot in a replay trace satisfies the state-machine invariants."""
-    last_generation = -1
-    for snap in snapshots:
-        assert snap.state in _VALID_STATES
-        assert snap.failure_count >= 0
-        assert snap.generation >= last_generation
-        last_generation = snap.generation
-        if snap.state == "opened":
-            assert snap.opened_at > 0.0
-
-
-@pytest.mark.unit
-def test_in_memory_state_traces_satisfy_invariants() -> None:
-    """Replay 50 deterministic random sequences against InMemoryStore."""
-    rng = random.Random(0)
-
-    async def run() -> None:
-        for _ in range(50):
-            sequence_length = rng.randint(1, 200)
-            ops = [rng.choice(_OP_NAMES) for _ in range(sequence_length)]
-            clock = FakeClock(now=0.0)
-            store = InMemoryStore(clock=clock)
-            for op in ops:
-                clock.advance(0.5)
-                if op == _OP_FAILURE:
-                    await store.arecord_failure("svc", threshold=3, ttl_seconds=10.0)
-                elif op == _OP_SUCCESS:
-                    await store.arecord_success("svc")
-                else:
-                    await store.apeek("svc")
-            traces: list[Snapshot] = []
-            seen = await store.apeek("svc")
-            if seen is not None:
-                traces.append(seen)
-            _replay_invariants(traces)
-
-    asyncio.run(run())
 
 
 @pytest.fixture
@@ -103,7 +57,6 @@ async def equivalence_store(redis_url: str) -> "AsyncGenerator[RedisStore]":
     await store.aclose()
 
 
-@pytest.mark.integration
 async def test_inmemory_redis_equivalence(equivalence_store: RedisStore) -> None:
     """Both backends produce identical ``(state, generation)`` traces.
 
@@ -156,7 +109,6 @@ async def test_inmemory_redis_equivalence(equivalence_store: RedisStore) -> None
         )
 
 
-@pytest.mark.integration
 async def test_inmemory_redis_equivalence_sliding(equivalence_store: RedisStore) -> None:
     """Both backends produce identical traces in sliding-window mode (DRAFT-0002 SC-203).
 

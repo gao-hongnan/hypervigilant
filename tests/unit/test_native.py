@@ -15,6 +15,8 @@ from hypervigilant.loggers.native import (
     get_logger,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestNativeLoggingConfig:
     def test_defaults(self) -> None:

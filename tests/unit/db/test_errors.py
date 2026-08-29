@@ -17,10 +17,26 @@ from hypervigilant.db.errors import (
 pytestmark = pytest.mark.unit
 
 
+class _DriverError(Exception):
+    """Stands in for the asyncpg exception SQLAlchemy wraps: it carries the metadata."""
+
+    def __init__(self, sqlstate: str | None, constraint: str | None) -> None:
+        super().__init__("boom")
+        self.sqlstate = sqlstate
+        self.constraint_name = constraint
+
+
+class _WrappedError(SQLAlchemyError):
+    """A SQLAlchemy error exposing its driver exception through ``.orig``, as asyncpg does."""
+
+    def __init__(self, orig: _DriverError) -> None:
+        super().__init__("boom")
+        self.orig = orig
+
+
 def _wrapped(sqlstate: str | None, constraint: str | None = None) -> SQLAlchemyError:
     """Build a SQLAlchemy error carrying a driver exception, as asyncpg produces."""
-    orig = type("Orig", (), {"sqlstate": sqlstate, "constraint_name": constraint})()
-    return type("Wrapped", (SQLAlchemyError,), {"orig": orig})("boom")
+    return _WrappedError(_DriverError(sqlstate, constraint))
 
 
 @pytest.mark.parametrize(

@@ -103,6 +103,7 @@ def test_verifying_ssl_builds_a_real_context(tmp_path: Path) -> None:
     with patch("hypervigilant.db.engine.ssl.create_default_context", return_value=context) as create_context:
         result = _ssl_connect_argument(SSLConfig(mode=SSLMode.VERIFY_FULL, root_cert=ca))
 
+    assert isinstance(result, ssl.SSLContext)
     assert result is context
     assert result.check_hostname is True
     assert result.verify_mode is ssl.CERT_REQUIRED
@@ -116,6 +117,7 @@ def test_verify_ca_does_not_check_hostname(tmp_path: Path) -> None:
     with patch("hypervigilant.db.engine.ssl.create_default_context", return_value=context) as create_context:
         result = _ssl_connect_argument(SSLConfig(mode=SSLMode.VERIFY_CA, root_cert=ca))
 
+    assert isinstance(result, ssl.SSLContext)
     assert result is context
     assert result.check_hostname is False
     assert result.verify_mode is ssl.CERT_REQUIRED

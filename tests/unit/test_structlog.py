@@ -20,6 +20,9 @@ from hypervigilant.loggers.structlog import (
     get_logger,
 )
 
+pytestmark = pytest.mark.unit
+
+
 if TYPE_CHECKING:
     from structlog.typing import EventDict, WrappedLogger
 

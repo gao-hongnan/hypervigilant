@@ -6,6 +6,8 @@ import pytest
 
 from hypervigilant.loggers.factory import BaseLoggerFactory
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def _reset_root() -> None:

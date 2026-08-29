@@ -29,6 +29,8 @@ from hypervigilant.retry import (
     retry,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestRetryConfig:
     def test_defaults(self) -> None:
@@ -70,12 +72,10 @@ class TestRetryConfig:
         assert config.retry_if is always_retry
         assert config.reraise is False
 
-    @pytest.mark.unit
     def test_max_attempts_below_one_rejected(self) -> None:
         with pytest.raises(ValueError):
             RetryConfig(max_attempts=0)
 
-    @pytest.mark.unit
     def test_negative_float_bounds_rejected(self) -> None:
         with pytest.raises(ValueError):
             RetryConfig(wait_min=-1.0)
@@ -88,7 +88,6 @@ class TestRetryConfig:
         with pytest.raises(ValidationError, match="wait_min"):
             RetryConfig(wait_min=0.75, wait_max=0.5)
 
-    @pytest.mark.unit
     def test_exp_base_below_one_rejected(self) -> None:
         with pytest.raises(ValueError):
             RetryConfig(exp_base=0.5)
@@ -130,7 +129,6 @@ class TestRetryMode:
 
 
 class TestBuildRetryCondition:
-    @pytest.mark.unit
     async def test_retry_if_predicate_takes_precedence(self) -> None:
         condition = build_retry_condition(
             retry_on=(TypeError,),
@@ -155,7 +153,6 @@ class TestBuildRetryCondition:
             await raises_value_error()
         assert calls == 5
 
-    @pytest.mark.unit
     async def test_retry_if_predicate_false_stops_immediately(self) -> None:
         condition = build_retry_condition(retry_if=lambda _: False)
         decorator = retry(stop=stop_after_attempt(5), wait=wait_none(), retry_condition=condition)
@@ -172,7 +169,6 @@ class TestBuildRetryCondition:
             await always_fails()
         assert calls == 1
 
-    @pytest.mark.unit
     async def test_retry_on_specific_exception_only(self) -> None:
         condition = build_retry_condition(retry_on=(ValueError,))
         decorator = retry(stop=stop_after_attempt(5), wait=wait_none(), retry_condition=condition)
@@ -189,7 +185,6 @@ class TestBuildRetryCondition:
             await raises_type_error()
         assert calls == 1
 
-    @pytest.mark.unit
     async def test_never_retry_on_overrides_retry_on(self) -> None:
         condition = build_retry_condition(
             retry_on=(Exception,),
@@ -209,7 +204,6 @@ class TestBuildRetryCondition:
             await raises_type_error()
         assert type_error_calls == 1
 
-    @pytest.mark.unit
     async def test_never_retry_on_allows_other_exceptions(self) -> None:
         condition = build_retry_condition(
             retry_on=(Exception,),
@@ -230,7 +224,6 @@ class TestBuildRetryCondition:
         assert await raises_value_error() == 7
         assert value_error_calls == 3
 
-    @pytest.mark.unit
     async def test_defaults_retry_on_all_exceptions(self) -> None:
         condition = build_retry_condition()
         decorator = retry(stop=stop_after_attempt(2), wait=wait_none(), retry_condition=condition)
@@ -249,12 +242,10 @@ class TestBuildRetryCondition:
 
 
 class TestRetryDecoratorMode:
-    @pytest.mark.unit
     async def test_returns_callable_decorator(self) -> None:
         decorator = retry(stop=stop_after_attempt(1), wait=wait_none())
         assert callable(decorator)
 
-    @pytest.mark.unit
     async def test_retries_until_success(self) -> None:
         decorator = retry(stop=stop_after_attempt(5), wait=wait_none(), reraise=True)
 
@@ -271,7 +262,6 @@ class TestRetryDecoratorMode:
         assert await flaky() == "ok"
         assert calls == 3
 
-    @pytest.mark.unit
     async def test_reraise_true_propagates_last_exception(self) -> None:
         decorator = retry(stop=stop_after_attempt(3), wait=wait_none(), reraise=True)
 
@@ -287,7 +277,6 @@ class TestRetryDecoratorMode:
             await always_fails()
         assert calls == 3
 
-    @pytest.mark.unit
     async def test_reraise_false_raises_retry_error(self) -> None:
         decorator = retry(stop=stop_after_attempt(2), wait=wait_none(), reraise=False)
 
@@ -299,7 +288,6 @@ class TestRetryDecoratorMode:
             await always_fails()
         assert isinstance(exc_info.value.last_attempt.exception(), ValueError)
 
-    @pytest.mark.unit
     async def test_before_after_before_sleep_callbacks_invoked(self) -> None:
         before_attempts: list[int] = []
         after_attempts: list[int] = []
@@ -333,7 +321,6 @@ class TestRetryDecoratorMode:
         assert after_attempts == [1, 2, 3]
         assert before_sleep_attempts == [1, 2]
 
-    @pytest.mark.unit
     async def test_wait_schedule_uses_injected_sleep(self) -> None:
         sleeps: list[float] = []
 
@@ -355,7 +342,6 @@ class TestRetryDecoratorMode:
             await always_fails()
         assert sleeps == [1.0, 2.0]
 
-    @pytest.mark.unit
     async def test_retry_error_callback_invoked_on_exhaustion(self) -> None:
         captured: list[RetryCallState] = []
 
@@ -378,7 +364,6 @@ class TestRetryDecoratorMode:
 
 
 class TestRetryContextManagerMode:
-    @pytest.mark.unit
     async def test_returns_async_retrying_instance(self) -> None:
         retrying = retry(
             mode=RetryMode.CONTEXT_MANAGER,
@@ -387,7 +372,6 @@ class TestRetryContextManagerMode:
         )
         assert isinstance(retrying, AsyncRetrying)
 
-    @pytest.mark.unit
     async def test_call_executes_retry_loop(self) -> None:
         retrying = retry(
             mode=RetryMode.CONTEXT_MANAGER,
@@ -408,7 +392,6 @@ class TestRetryContextManagerMode:
         assert await retrying(flaky) == 99
         assert calls == 3
 
-    @pytest.mark.unit
     async def test_call_reraises_on_exhaustion(self) -> None:
         retrying = retry(
             mode=RetryMode.CONTEXT_MANAGER,
@@ -423,7 +406,6 @@ class TestRetryContextManagerMode:
         with pytest.raises(ValueError, match="boom"):
             await retrying(always_fails)
 
-    @pytest.mark.unit
     async def test_call_passes_positional_and_keyword_args(self) -> None:
         retrying = retry(
             mode=RetryMode.CONTEXT_MANAGER,
@@ -439,7 +421,6 @@ class TestRetryContextManagerMode:
 
 
 class TestLogRetryCallback:
-    @pytest.mark.unit
     async def test_logs_warning_with_attempt_and_exception(self, caplog: pytest.LogCaptureFixture) -> None:
         decorator = retry(
             stop=stop_after_attempt(2),

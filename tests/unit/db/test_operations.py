@@ -2,7 +2,11 @@
 
 from enum import StrEnum
 
+import pytest
+
 import hypervigilant.db as db
+
+pytestmark = pytest.mark.unit
 
 
 def test_database_operation_is_a_closed_public_str_enum() -> None:

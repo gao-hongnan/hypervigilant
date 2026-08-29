@@ -49,9 +49,14 @@ async def test_circuit_opens_after_consecutive_failures() -> None:
         await failing_operation()
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 async def test_circuit_recovers_after_ttl_and_successful_call() -> None:
-    """``OPENED -> HALF_OPENED -> CLOSED`` after TTL and a successful probe."""
+    """``OPENED -> HALF_OPENED -> CLOSED`` after TTL and a successful probe.
+
+    Hermetic despite the two short sleeps: the breaker's state lives in the default
+    in-process store, so nothing here reaches Redis. It was previously marked
+    ``integration`` for its wall-clock waits alone, which is a cost, not a dependency.
+    """
     close_events: list[str] = []
 
     def tracking_hook(event: BreakerEvent) -> None:

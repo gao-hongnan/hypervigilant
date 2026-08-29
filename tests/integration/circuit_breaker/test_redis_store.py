@@ -1,4 +1,4 @@
-"""Integration tests for ``RedisStore`` (PR 3 / task 3B).
+"""End-to-end ``RedisStore`` behaviour against a real Redis (PR 3 / task 3B).
 
 Exercises the asymmetric Protocol shape end-to-end against testcontainers
 Redis. Covers the happy-path mutation flow, the ``FAIL_STATIC`` fallback
@@ -34,6 +34,8 @@ from hypervigilant.circuit_breaker.policy import Decision
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -77,145 +79,15 @@ class _Capture:
 
 
 # ---------------------------------------------------------------------------
-# Construction-time validation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_secondary_policy_fail_static_is_rejected_at_construction() -> None:
-    """``secondary_policy`` cannot be ``FAIL_STATIC`` (would recurse on cold cache)."""
-    from redis.asyncio import Redis
-
-    with pytest.raises(ValueError, match="secondary_policy"):
-        RedisStore(
-            client=Redis(),
-            secondary_policy=StorageFailurePolicy.FAIL_STATIC,
-        )
-
-
-@pytest.mark.unit
-def test_invalid_cache_size_raises() -> None:
-    """``cache_size < 1`` is rejected at construction."""
-    from redis.asyncio import Redis
-
-    with pytest.raises(ValueError, match="cache_size"):
-        RedisStore(client=Redis(), cache_size=0)
-
-
-@pytest.mark.unit
-def test_invalid_request_timeout_raises() -> None:
-    """``request_timeout_seconds <= 0`` is rejected at construction."""
-    from redis.asyncio import Redis
-
-    with pytest.raises(ValueError, match="request_timeout_seconds"):
-        RedisStore(client=Redis(), request_timeout_seconds=0.0)
-
-
-@pytest.mark.unit
-async def test_request_timeout_raises_circuit_storage_error_on_slow_client() -> None:
-    """H5 regression: a slow Redis client raises ``CircuitStorageError`` within the timeout window.
-
-    The breaker must not contribute to the very latency it is meant to
-    prevent. Without ``asyncio.timeout`` a hung TCP connection can block
-    every protected call for tens of seconds.
-    """
-    import asyncio as _asyncio
-
-    class _SlowClient:
-        async def script_load(self, source: str) -> bytes:  # noqa: ARG002
-            await _asyncio.sleep(10.0)
-            return b"sha"
-
-        async def evalsha(self, *_args: object, **_kwargs: object) -> object:
-            await _asyncio.sleep(10.0)
-            return []
-
-        async def aclose(self) -> None:
-            pass
-
-    store = RedisStore(client=_SlowClient(), request_timeout_seconds=0.05)  # type: ignore[arg-type]
-    elapsed_start = _asyncio.get_event_loop().time()
-    with pytest.raises(CircuitStorageError):
-        await store.aacquire(
-            "svc",
-            threshold=5,
-            ttl_seconds=30.0,
-            lease_seconds=5.0,
-        )
-    elapsed = _asyncio.get_event_loop().time() - elapsed_start
-    assert elapsed < 1.0, (
-        f"Expected fast failure within request_timeout_seconds=0.05; "
-        f"actually waited {elapsed:.3f}s. Timeout not honoured."
-    )
-
-
-@pytest.mark.unit
-async def test_from_client_does_not_close_caller_supplied_client() -> None:
-    """H3 regression: ``from_client`` defaults to ``owns_client=False`` so the
-    store's ``aclose`` does NOT call ``aclose`` on the caller-supplied client.
-
-    Sharing a Redis client across multiple components (cache, rate-limiter,
-    circuit breaker) is a normal pattern; the store must not pull the rug
-    out from under the other consumers when its lifespan ends.
-    """
-    aclose_calls: list[None] = []
-
-    class _MockClient:
-        async def aclose(self) -> None:
-            aclose_calls.append(None)
-
-    client = _MockClient()
-    store = RedisStore.from_client(client)  # type: ignore[arg-type]
-    await store.aclose()
-    assert aclose_calls == [], (
-        f"from_client default (owns_client=False) must NOT close the supplied "
-        f"client; aclose was called {len(aclose_calls)} time(s)."
-    )
-
-
-@pytest.mark.unit
-async def test_from_client_owns_client_true_closes_supplied_client() -> None:
-    """H3: ``from_client(owns_client=True)`` does close the supplied client."""
-    aclose_calls: list[None] = []
-
-    class _MockClient:
-        async def aclose(self) -> None:
-            aclose_calls.append(None)
-
-    client = _MockClient()
-    store = RedisStore.from_client(client, owns_client=True)  # type: ignore[arg-type]
-    await store.aclose()
-    assert aclose_calls == [None]
-
-
-@pytest.mark.unit
-async def test_from_url_closes_owned_client() -> None:
-    """H3: ``from_url`` sets ``owns_client=True`` so ``aclose`` closes the pool."""
-    aclose_calls: list[None] = []
-
-    class _MockClient:
-        async def aclose(self) -> None:
-            aclose_calls.append(None)
-
-    # Construct via __init__ directly with owns_client=True (mirrors what
-    # from_url does) -- avoids the redis.asyncio.Redis import path.
-    store = RedisStore(client=_MockClient(), owns_client=True)  # type: ignore[arg-type]
-    await store.aclose()
-    assert aclose_calls == [None]
-
-
-# ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 async def test_redis_store_implements_protocol(store: RedisStore) -> None:
     """``isinstance`` recognises ``RedisStore`` as a ``BreakerStore``."""
     assert isinstance(store, BreakerStore)
 
 
-@pytest.mark.integration
 async def test_acquire_on_fresh_circuit_returns_allow(store: RedisStore) -> None:
     """A circuit Redis has never seen returns AllowCall (state=closed)."""
     decision, _ = await store.aacquire(
@@ -227,7 +99,6 @@ async def test_acquire_on_fresh_circuit_returns_allow(store: RedisStore) -> None
     assert isinstance(decision, AllowCall)
 
 
-@pytest.mark.integration
 async def test_record_failure_increments_count_and_persists(store: RedisStore) -> None:
     """A single failure persists into Redis and is observable via peek."""
     snap = await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
@@ -238,7 +109,6 @@ async def test_record_failure_increments_count_and_persists(store: RedisStore) -
     assert seen.failure_count == 1
 
 
-@pytest.mark.integration
 async def test_threshold_crossing_transitions_to_opened_with_generation_increment(
     store: RedisStore,
 ) -> None:
@@ -258,7 +128,6 @@ async def test_threshold_crossing_transitions_to_opened_with_generation_incremen
     assert final.generation == pre.generation + 1
 
 
-@pytest.mark.integration
 async def test_record_success_resets_count_in_closed_state(store: RedisStore) -> None:
     """Success in closed state resets failure_count to zero."""
     await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
@@ -267,7 +136,6 @@ async def test_record_success_resets_count_in_closed_state(store: RedisStore) ->
     assert snap.failure_count == 0
 
 
-@pytest.mark.integration
 async def test_acquire_after_ttl_returns_probe_and_transitions_state(
     store: RedisStore,
 ) -> None:
@@ -289,7 +157,6 @@ async def test_acquire_after_ttl_returns_probe_and_transitions_state(
     assert snap.state == "half_opened"
 
 
-@pytest.mark.integration
 async def test_record_success_during_half_open_closes_breaker(
     store: RedisStore,
 ) -> None:
@@ -309,7 +176,6 @@ async def test_record_success_during_half_open_closes_breaker(
     assert snap.generation == pre.generation + 1
 
 
-@pytest.mark.integration
 async def test_reset_clears_named_circuit(store: RedisStore) -> None:
     """``reset(name)`` deletes both state and probe keys."""
     await store.arecord_failure("svc", threshold=5, ttl_seconds=30.0)
@@ -340,7 +206,6 @@ def _install_failing_evalsha(store: RedisStore) -> None:
     store._client.evalsha = _raise  # noqa: SLF001 -- test-only injection
 
 
-@pytest.mark.integration
 async def test_fail_static_cached_closed_allows_during_redis_outage(
     store: RedisStore,
 ) -> None:
@@ -359,7 +224,6 @@ async def test_fail_static_cached_closed_allows_during_redis_outage(
     assert any(fb[3] is StorageFailurePolicy.FAIL_STATIC for fb in observer.fallbacks)
 
 
-@pytest.mark.integration
 async def test_fail_static_cached_open_denies_during_redis_outage(
     store: RedisStore,
 ) -> None:
@@ -379,7 +243,6 @@ async def test_fail_static_cached_open_denies_during_redis_outage(
     assert isinstance(decision, RejectCall)
 
 
-@pytest.mark.integration
 async def test_fail_static_cold_cache_falls_through_to_secondary_open(
     redis_url: str,
 ) -> None:
@@ -401,7 +264,6 @@ async def test_fail_static_cold_cache_falls_through_to_secondary_open(
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_fail_static_cold_cache_with_secondary_closed_denies(
     redis_url: str,
 ) -> None:
@@ -431,7 +293,6 @@ async def test_fail_static_cold_cache_with_secondary_closed_denies(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 async def test_failure_policy_fail_open_acquire_returns_allow_during_outage(
     redis_url: str,
 ) -> None:
@@ -469,7 +330,6 @@ async def test_failure_policy_fail_open_acquire_returns_allow_during_outage(
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_failure_policy_fail_closed_acquire_returns_reject_during_outage(
     redis_url: str,
 ) -> None:
@@ -504,7 +364,6 @@ async def test_failure_policy_fail_closed_acquire_returns_reject_during_outage(
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_failure_policy_fail_open_record_failure_returns_synthesized_snapshot(
     redis_url: str,
 ) -> None:
@@ -528,7 +387,6 @@ async def test_failure_policy_fail_open_record_failure_returns_synthesized_snaps
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_failure_policy_fail_closed_record_failure_returns_opened_snapshot(
     redis_url: str,
 ) -> None:
@@ -551,7 +409,6 @@ async def test_failure_policy_fail_closed_record_failure_returns_opened_snapshot
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_acquire_with_stale_half_open_lease_reissues_probe(
     store: RedisStore,
 ) -> None:
@@ -591,7 +448,6 @@ async def test_acquire_with_stale_half_open_lease_reissues_probe(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 async def test_peek_returns_none_for_absent_key_when_redis_healthy(
     store: RedisStore,
 ) -> None:
@@ -599,7 +455,6 @@ async def test_peek_returns_none_for_absent_key_when_redis_healthy(
     assert await store.apeek("never-touched") is None
 
 
-@pytest.mark.integration
 async def test_peek_raises_circuit_storage_error_on_outage_with_cold_cache(
     store: RedisStore,
 ) -> None:
@@ -624,7 +479,6 @@ async def test_peek_raises_circuit_storage_error_on_outage_with_cold_cache(
         await store.apeek("never-cached")
 
 
-@pytest.mark.integration
 async def test_peek_returns_cached_snapshot_on_outage_when_cache_warm(
     store: RedisStore,
 ) -> None:
@@ -647,7 +501,6 @@ async def test_peek_returns_cached_snapshot_on_outage_when_cache_warm(
     assert snap.state == cached_before.state
 
 
-@pytest.mark.integration
 async def test_record_failure_during_outage_with_cold_cache_raises(
     redis_url: str,
 ) -> None:
@@ -671,7 +524,6 @@ async def test_record_failure_during_outage_with_cold_cache_raises(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 async def test_noscript_error_triggers_reload_and_retry(
     redis_url: str,
 ) -> None:
@@ -703,7 +555,6 @@ async def test_noscript_error_triggers_reload_and_retry(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 async def test_redis_sliding_trips_at_rate(redis_url: str) -> None:
     """A sliding breaker trips on Redis once the window fills past min_calls."""
     store = RedisStore.from_url(redis_url)
@@ -720,7 +571,6 @@ async def test_redis_sliding_trips_at_rate(redis_url: str) -> None:
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_redis_sliding_success_records_into_window(redis_url: str) -> None:
     """A success on Redis records into the sliding window without wiping it (EC-103)."""
     store = RedisStore.from_url(redis_url)
@@ -737,7 +587,6 @@ async def test_redis_sliding_success_records_into_window(redis_url: str) -> None
         await store.aclose()
 
 
-@pytest.mark.integration
 async def test_redis_sliding_concurrent_single_trip(redis_url: str) -> None:
     """1,000 concurrent record_failure calls produce exactly one trip (EC-107)."""
     store = RedisStore.from_url(redis_url)

@@ -11,6 +11,7 @@ from typing import Annotated, Final, Literal
 
 import pytest
 from pydantic import BaseModel, Field, TypeAdapter
+from sqlalchemy import types
 from sqlalchemy.dialects import postgresql
 
 from hypervigilant.db.types import NAMING_CONVENTION, PydanticJSON, build_metadata
@@ -75,7 +76,9 @@ def test_none_is_bound_as_sql_null() -> None:
     """
     column = PydanticJSON(ALPHA_ADAPTER)
     assert column.process_bind_param(None, postgresql.dialect()) is None
-    assert column.impl_instance.none_as_null is True
+    impl = column.impl_instance
+    assert isinstance(impl, types.JSON)
+    assert impl.none_as_null is True
 
 
 def test_discriminated_union_round_trips_as_its_variant() -> None:

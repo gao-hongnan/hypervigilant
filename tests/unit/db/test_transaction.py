@@ -1,9 +1,12 @@
 """Focused unit tests for database transaction retry policy mapping."""
 
+import pytest
 from tenacity import wait_random_exponential
 
 from hypervigilant.db.transaction import _retrying
 from hypervigilant.retry import RetryConfig
+
+pytestmark = pytest.mark.unit
 
 
 def test_retrying_maps_wait_min_independently_from_multiplier() -> None:

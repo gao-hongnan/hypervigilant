@@ -16,6 +16,9 @@ from hypervigilant.loggers.structlog import (
     get_logger,
 )
 
+pytestmark = pytest.mark.integration
+
+
 if TYPE_CHECKING:
     from tests.conftest import LogCapture
 
