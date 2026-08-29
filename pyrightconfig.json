@@ -1,55 +1,67 @@
 {
-    "pythonVersion": "3.13",
-    "typeCheckingMode": "strict",
-    "reportMissingTypeStubs": false,
-    "reportUnnecessaryIsInstance": false,
-    "reportUnnecessaryTypeIgnoreComment": false,
-    "reportUnnecessaryCast": false,
-    "reportInvalidTypeVarUse": false,
-    "reportMissingModuleSource": false,
-    "reportUnknownParameterType": false,
-    "reportUnknownArgumentType": false,
-    "reportUnknownVariableType": false,
-    "reportUnknownMemberType": false,
-    "reportGeneralTypeIssues": true,
-    "reportOptionalSubscript": false,
-    "reportOptionalMemberAccess": false,
-    "reportOptionalCall": false,
-    "reportOptionalIterable": false,
-    "reportOptionalContextManager": false,
-    "reportOptionalOperand": false,
-    "reportPrivateUsage": false,
-    "include": [
-      "hypervigilant",
-      "tests"
-    ],
-    "exclude": [
-      ".venv",
-      "venv",
-      "build",
-      "dist",
-      "data",
-      "logs",
-      "outputs",
-      "checkpoints",
-      "models",
-      "**/__pycache__",
-      "**/*.pyc",
-      "**/.pytest_cache",
-      "**/.mypy_cache",
-      "**/.ruff_cache",
-      "**/node_modules"
-    ],
-    "venvPath": ".",
-    "venv": ".venv",
-    "executionEnvironments": [
-      {
-        "root": "tests",
-        "reportUnusedFunction": false,
-        "reportPrivateImportUsage": false,
-        "reportUnusedImport": false,
-        "reportUnusedVariable": false
-      }
-    ],
-    "extraPaths": []
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "reportUnnecessaryIsInstance": false,
+  "reportUnnecessaryTypeIgnoreComment": false,
+  "reportUnnecessaryCast": false,
+  "reportInvalidTypeVarUse": false,
+  "reportMissingModuleSource": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownMemberType": false,
+  "reportGeneralTypeIssues": true,
+  "reportOptionalSubscript": false,
+  "reportOptionalMemberAccess": false,
+  "reportOptionalCall": false,
+  "reportOptionalIterable": false,
+  "reportOptionalContextManager": false,
+  "reportOptionalOperand": false,
+  "reportPrivateUsage": false,
+  "include": [
+    "hypervigilant",
+    "tests"
+  ],
+  "exclude": [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "data",
+    "logs",
+    "outputs",
+    "checkpoints",
+    "models",
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/.pytest_cache",
+    "**/.mypy_cache",
+    "**/.ruff_cache",
+    "**/node_modules"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {
+      // SQLModel marks AsyncSession.execute() deprecated in favour of exec(), but
+      // exec() has no overload accepting a TextClause -- raw SQL here has no other
+      // session-level API. Drop this entry when sqlmodel accepts Executable in
+      // exec(). Mirrors the filterwarnings entry in .pytest.ini.
+      "root": "tests/integration/db",
+      "reportDeprecated": false,
+      "reportUnusedFunction": false,
+      "reportPrivateImportUsage": false,
+      "reportUnusedImport": false,
+      "reportUnusedVariable": false
+    },
+    {
+      "root": "tests",
+      "reportUnusedFunction": false,
+      "reportPrivateImportUsage": false,
+      "reportUnusedImport": false,
+      "reportUnusedVariable": false
+    }
+  ],
+  "extraPaths": []
 }

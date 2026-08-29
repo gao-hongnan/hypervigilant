@@ -67,6 +67,8 @@ select = [
     "PT025",
     "PT026",
     "PYI",
+    "RUF022",
+    "SLF",
     "B904",
     "TRY203",
     "UP",
@@ -85,6 +87,12 @@ ignore = [
 fixable = ["ALL"]
 unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.per-file-ignores]
+# White-box assertions on private state are the point of these tests: a compiled-cache
+# key, a factory's installed handler, a store's injected client. The rule stays on for
+# `hypervigilant/` itself, where reaching past a boundary is a design signal.
+"tests/**" = ["SLF001"]
 
 [lint.isort]
 known-first-party = ["hypervigilant"]

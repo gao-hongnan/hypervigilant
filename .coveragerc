@@ -8,6 +8,8 @@ omit =
 
 [report]
 fail_under = 80
+# Raise deliberately; `make ci` enforces whatever stands here, and nothing else
+# restates the number.
 show_missing = True
 
 [html]
