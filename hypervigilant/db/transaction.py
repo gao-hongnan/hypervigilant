@@ -59,6 +59,7 @@ from tenacity import stop_after_attempt, wait_random_exponential
 
 from ..retry import RetryConfig, RetryMode, build_retry_condition, retry
 from .errors import DatabaseError, DatabaseUnavailableError, TransactionConflictError, translate_error
+from .operations import DatabaseOperation
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
@@ -153,7 +154,7 @@ def _retrying(policy: RetryConfig) -> AsyncRetrying:
 
 
 @asynccontextmanager
-async def aunit_of_work(factory: SessionFactory, *, operation: str) -> AsyncGenerator[AsyncSession]:
+async def aunit_of_work(factory: SessionFactory, *, operation: DatabaseOperation | str) -> AsyncGenerator[AsyncSession]:
     """Open a session with a transaction: commit on clean exit, roll back on error.
 
     Thin on purpose -- ``async_sessionmaker.begin()`` does the session and transaction

@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from sqlalchemy.exc import SQLAlchemyError
 
 from .errors import translate_error
+from .operations import DatabaseOperation
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
@@ -70,7 +71,9 @@ class SessionProvider(Protocol):
 
 
 @asynccontextmanager
-async def asession_scope(factory: SessionFactory, *, operation: str) -> AsyncGenerator[AsyncSession]:
+async def asession_scope(
+    factory: SessionFactory, *, operation: DatabaseOperation | str
+) -> AsyncGenerator[AsyncSession]:
     """Yield a session, translating any SQLAlchemy failure on the way out.
 
     Parameters

@@ -13,20 +13,27 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import QueuePool
 
+from .config import MILLIS_PER_SECOND
 from .operations import DatabaseOperation
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
-__all__ = ["HealthProbe", "HealthReport", "PoolHealthProbe", "PoolStats"]
+__all__ = ["PROBE_STATEMENT", "HealthProbe", "HealthReport", "PoolHealthProbe", "PoolStats"]
 
-_PROBE_STATEMENT = text("SELECT 1")
+PROBE_STATEMENT: Final = text("SELECT 1")
+"""The one statement this package uses to ask "is this engine reachable".
+
+Shared with :meth:`hypervigilant.db.runtime.asyncio.Database.ainitialize`, whose
+startup probe asks exactly the same question. Two ``text("SELECT 1")`` objects would
+also be two entries in SQLAlchemy's compiled-statement cache.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +116,7 @@ class PoolHealthProbe:
 
     __slots__ = ("_engine", "_operation")
 
-    def __init__(self, engine: AsyncEngine, *, operation: str = DatabaseOperation.HEALTH) -> None:
+    def __init__(self, engine: AsyncEngine, *, operation: DatabaseOperation | str = DatabaseOperation.HEALTH) -> None:
         self._engine = engine
         self._operation = str(operation)
 
@@ -151,7 +158,7 @@ class PoolHealthProbe:
         started = time.perf_counter()
         try:
             async with self._engine.connect() as connection:
-                await connection.execute(_PROBE_STATEMENT)
+                await connection.execute(PROBE_STATEMENT)
         except SQLAlchemyError as exc:
             return HealthReport(
                 ok=False,
@@ -159,5 +166,5 @@ class PoolHealthProbe:
                 latency_ms=None,
                 pool=stats,
             )
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        elapsed_ms = (time.perf_counter() - started) * MILLIS_PER_SECOND
         return HealthReport(ok=True, detail=f"{self._operation}: ready", latency_ms=elapsed_ms, pool=stats)

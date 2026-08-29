@@ -61,6 +61,8 @@ from typing import ClassVar, Final
 from sqlalchemy.exc import DBAPIError, InterfaceError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 
+from .operations import DatabaseOperation
+
 __all__ = [
     "DatabaseError",
     "DatabaseUnavailableError",
@@ -69,6 +71,15 @@ __all__ = [
     "UnclassifiedDatabaseError",
     "translate_error",
 ]
+
+_WRAPPED_ATTRIBUTE: Final = "orig"
+"""SQLAlchemy's link from its own exception to the DBAPI shim beneath it."""
+
+_SQLSTATE_ATTRIBUTE: Final = "sqlstate"
+"""The five-character PostgreSQL error code. Both supported drivers spell it this way."""
+
+_CONSTRAINT_ATTRIBUTE: Final = "constraint_name"
+"""The violated constraint's name. Only the driver-native exception carries it."""
 
 _CONNECTION_CLASS: Final = "08"
 """SQLSTATE class 08 -- connection exception. The whole class is retryable."""
@@ -124,7 +135,7 @@ class DatabaseError(Exception):
     operation: str
     sqlstate: str | None
 
-    def __init__(self, message: str, *, operation: str, sqlstate: str | None = None) -> None:
+    def __init__(self, message: str, *, operation: DatabaseOperation | str, sqlstate: str | None = None) -> None:
         if type(self) is DatabaseError:
             reason = "DatabaseError is a base type; raise one of its leaves."
             raise TypeError(reason)
@@ -202,7 +213,7 @@ class IntegrityViolationError(DatabaseError):
         self,
         message: str,
         *,
-        operation: str,
+        operation: DatabaseOperation | str,
         sqlstate: str | None = None,
         constraint: str | None = None,
     ) -> None:
@@ -246,7 +257,7 @@ def _driver_chain(error: BaseException) -> tuple[BaseException | None, ...]:
     optional, swappable component. Both supported PostgreSQL drivers spell these
     attributes the same way.
     """
-    orig = getattr(error, "orig", None)
+    orig = getattr(error, _WRAPPED_ATTRIBUTE, None)
     return (error, orig, getattr(orig, "__cause__", None), error.__cause__)
 
 
@@ -263,15 +274,15 @@ def _driver_attribute(error: BaseException, name: str) -> str | None:
 
 def _sqlstate_of(error: BaseException) -> str | None:
     """Read the five-character SQLSTATE, wherever in the wrapper chain it sits."""
-    return _driver_attribute(error, "sqlstate")
+    return _driver_attribute(error, _SQLSTATE_ATTRIBUTE)
 
 
 def _constraint_of(error: BaseException) -> str | None:
     """Read the violated constraint name, wherever in the wrapper chain it sits."""
-    return _driver_attribute(error, "constraint_name")
+    return _driver_attribute(error, _CONSTRAINT_ATTRIBUTE)
 
 
-def translate_error(error: SQLAlchemyError, *, operation: str) -> DatabaseError:
+def translate_error(error: SQLAlchemyError, *, operation: DatabaseOperation | str) -> DatabaseError:
     """Map a SQLAlchemy failure onto this package's taxonomy.
 
     Classification is by SQLSTATE *class* -- the first two characters -- because

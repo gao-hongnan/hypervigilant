@@ -43,7 +43,15 @@ from sqlalchemy.pool import NullPool
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ..loggers import get_logger
-from .config import AsyncDriver, DBConfig, PoolingMode, SSLConfig, SSLMode
+from .config import (
+    AsyncDriver,
+    DBConfig,
+    PoolingMode,
+    SSLConfig,
+    SSLMode,
+    missing_trust_anchor,
+    plaintext_fallback_conflict,
+)
 from .errors import translate_error
 from .operations import DatabaseOperation
 
@@ -55,9 +63,6 @@ if TYPE_CHECKING:
 __all__ = ["async_url_for", "build_engine", "build_session_factory"]
 
 logger = get_logger(__name__)
-
-_VERIFYING_MODES = frozenset({SSLMode.VERIFY_CA, SSLMode.VERIFY_FULL})
-_PLAINTEXT_FALLBACK_MODES = frozenset({SSLMode.ALLOW, SSLMode.PREFER})
 
 
 def async_url_for(config: DBConfig) -> URL:
@@ -124,20 +129,15 @@ def _ssl_connect_argument(ssl_config: SSLConfig) -> ssl.SSLContext | str:
     >>> _ssl_connect_argument(SSLConfig(mode=SSLMode.REQUIRE))
     'require'
     """
-    if ssl_config.cert is not None and ssl_config.mode in _PLAINTEXT_FALLBACK_MODES:
-        message = (
-            f"asyncpg cannot preserve plaintext fallback for ssl.mode {ssl_config.mode.value!r} "
-            "when ssl.cert and ssl.key require an SSLContext"
-        )
-        raise ValueError(message)
-    if ssl_config.mode not in _VERIFYING_MODES and ssl_config.cert is None:
+    if ssl_config.cert is not None and ssl_config.mode.allows_plaintext_fallback:
+        raise ValueError(plaintext_fallback_conflict(ssl_config.mode))
+    if not ssl_config.mode.verifies_server_certificate and ssl_config.cert is None:
         return ssl_config.mode.value
 
-    if ssl_config.mode in _VERIFYING_MODES:
+    if ssl_config.mode.verifies_server_certificate:
         root_cert = ssl_config.root_cert
         if root_cert is None:
-            message = f"ssl.mode {ssl_config.mode.value!r} requires ssl.root_cert"
-            raise ValueError(message)
+            raise ValueError(missing_trust_anchor(ssl_config.mode))
         context = ssl.create_default_context(cafile=str(root_cert))
         context.check_hostname = ssl_config.mode is SSLMode.VERIFY_FULL
         context.verify_mode = ssl.CERT_REQUIRED
@@ -316,9 +316,18 @@ def build_session_factory(engine: AsyncEngine) -> SessionFactory:
     line that decides which session every query runs on. ``exec()`` is typed per
     statement kind, so ``select(Row)`` yields ``ScalarResult[Row]`` and an
     ``update()`` yields ``CursorResult``, results the generic ``execute()`` types as
-    ``Any``. And SQLModel marks ``execute()`` deprecated with a PEP 702
-    ``@deprecated`` that emits a real ``DeprecationWarning`` at call time -- under
-    this project's ``filterwarnings = error`` that is a test failure, not a note.
+    ``Any``. SQLModel additionally marks ``execute()`` deprecated with a PEP 702
+    ``@deprecated`` that emits a real ``DeprecationWarning`` at call time.
+
+    That deprecation is *not* enforced as a test failure here, and the exemption is
+    narrow rather than a blanket one. ``exec()`` is overloaded for ``Select``,
+    ``SelectOfScalar`` and ``UpdateBase`` only -- it has no overload accepting a
+    :class:`~sqlalchemy.sql.expression.TextClause`, so raw SQL has no ``exec()``
+    spelling and ``execute()`` is the correct call rather than a lapse. ``.pytest.ini``
+    allowlists that one message by its text and ``pyrightconfig.json`` disables
+    ``reportDeprecated`` for ``tests/integration/db`` alone; both name the condition
+    that retires them. Every other ``DeprecationWarning`` in this project is still an
+    error, which is how the deprecated ``testcontainers.redis`` import was found.
 
     Examples
     --------

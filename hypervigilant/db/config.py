@@ -66,6 +66,7 @@ __all__ = [
     "ReaderEndpoint",
     "SSLConfig",
     "SSLMode",
+    "ServerSetting",
 ]
 
 _MAX_IDENTIFIER_BYTES: Final = 63
@@ -94,8 +95,16 @@ of asyncpg's ``server_settings`` mapping; a name containing either is a
 parameter-injection primitive rather than a label.
 """
 
-_MILLIS_PER_SECOND: Final = 1000
+MILLIS_PER_SECOND: Final = 1000
+"""Shared so the one place seconds become milliseconds is not spelled twice.
+
+Not underscore-prefixed because :mod:`hypervigilant.db.health` reads it too: the
+package's whole timeout story is that ms-versus-seconds confusion is the hazard, so
+the conversion carries a name rather than appearing as a bare ``1000``.
+"""
+
 _DEFAULT_SEARCH_PATH: Final = ("public",)
+_GUC_ENABLED: Final = "on"
 
 
 type PortNumber = Annotated[int, Field(ge=1, le=65_535)]
@@ -196,6 +205,57 @@ class SSLMode(StrEnum):
     VERIFY_CA = "verify-ca"
     VERIFY_FULL = "verify-full"
 
+    @property
+    def verifies_server_certificate(self) -> bool:
+        """Whether this mode authenticates the server, and so needs a trust anchor.
+
+        Examples
+        --------
+        >>> SSLMode.VERIFY_CA.verifies_server_certificate
+        True
+        >>> SSLMode.REQUIRE.verifies_server_certificate
+        False
+        """
+        return self in _VERIFYING_SSL_MODES
+
+    @property
+    def allows_plaintext_fallback(self) -> bool:
+        """Whether asyncpg may still negotiate an unencrypted connection in this mode.
+
+        Examples
+        --------
+        >>> SSLMode.PREFER.allows_plaintext_fallback
+        True
+        >>> SSLMode.REQUIRE.allows_plaintext_fallback
+        False
+        """
+        return self in _PLAINTEXT_FALLBACK_SSL_MODES
+
+
+_VERIFYING_SSL_MODES: Final[frozenset[SSLMode]] = frozenset({SSLMode.VERIFY_CA, SSLMode.VERIFY_FULL})
+_PLAINTEXT_FALLBACK_SSL_MODES: Final[frozenset[SSLMode]] = frozenset({SSLMode.ALLOW, SSLMode.PREFER})
+
+
+def plaintext_fallback_conflict(mode: SSLMode) -> str:
+    """Return the message for a client certificate that would erase asyncpg's fallback.
+
+    Shared with :mod:`hypervigilant.db.engine`, which re-checks the same rule for an
+    :class:`SSLConfig` built through ``model_construct``. Two spellings of one rule is
+    how the wording drifts apart, and a caller matching on the text loses.
+    """
+    return (
+        f"asyncpg cannot preserve plaintext fallback for ssl.mode {mode.value!r} "
+        "when ssl.cert and ssl.key require an SSLContext; use ssl.mode 'require' or the psycopg driver"
+    )
+
+
+def missing_trust_anchor(mode: SSLMode) -> str:
+    """Return the message for a verifying mode with no CA bundle. Shared, as above."""
+    return (
+        f"ssl.mode {mode.value!r} verifies the server certificate but no ssl.root_cert "
+        f"was given; set the CA bundle explicitly rather than inheriting the host trust store"
+    )
+
 
 class IsolationLevel(StrEnum):
     """Transaction isolation levels SQLAlchemy will set on a connection.
@@ -244,6 +304,34 @@ class PoolingMode(StrEnum):
     DIRECT = "direct"
     SESSION = "session"
     TRANSACTION = "transaction"
+
+
+class ServerSetting(StrEnum):
+    """The PostgreSQL GUCs this package sets on every new connection.
+
+    A closed set, spelled once. These names are a wire contract with the server: a
+    typo reaches asyncpg's ``server_settings`` mapping and fails at connect time with
+    ``unrecognized configuration parameter``, which is a deploy-time outage for a
+    string literal nothing checked.
+
+    Members are :class:`~enum.StrEnum`, but :meth:`DBConfig.server_settings` keys its
+    result with ``.value`` rather than the member. The mapping is handed to the driver
+    and rendered into log lines, and a dict keyed by enum members reprs as
+    ``<ServerSetting.SEARCH_PATH: 'search_path'>`` -- so the conversion to ``str``
+    happens once, here, at the serialization boundary.
+
+    Examples
+    --------
+    >>> ServerSetting.STATEMENT_TIMEOUT.value
+    'statement_timeout'
+    """
+
+    APPLICATION_NAME = "application_name"
+    SEARCH_PATH = "search_path"
+    DEFAULT_TRANSACTION_READ_ONLY = "default_transaction_read_only"
+    STATEMENT_TIMEOUT = "statement_timeout"
+    LOCK_TIMEOUT = "lock_timeout"
+    IDLE_IN_TRANSACTION_SESSION_TIMEOUT = "idle_in_transaction_session_timeout"
 
 
 class SSLConfig(BaseModel):
@@ -303,12 +391,8 @@ class SSLConfig(BaseModel):
 
     @model_validator(mode="after")
     def _verification_needs_a_trust_anchor(self) -> Self:
-        if self.mode in {SSLMode.VERIFY_CA, SSLMode.VERIFY_FULL} and self.root_cert is None:
-            message = (
-                f"ssl.mode {self.mode.value!r} verifies the server certificate but no ssl.root_cert "
-                f"was given; set the CA bundle explicitly rather than inheriting the host trust store"
-            )
-            raise ValueError(message)
+        if self.mode.verifies_server_certificate and self.root_cert is None:
+            raise ValueError(missing_trust_anchor(self.mode))
         return self
 
     @model_validator(mode="after")
@@ -535,16 +619,8 @@ class DBConfig(BaseModel):
     @model_validator(mode="after")
     def _asyncpg_client_certificate_preserves_ssl_mode(self) -> Self:
         """Reject an SSLContext shape that would erase asyncpg's fallback modes."""
-        if (
-            self.driver is AsyncDriver.ASYNCPG
-            and self.ssl.cert is not None
-            and self.ssl.mode in {SSLMode.ALLOW, SSLMode.PREFER}
-        ):
-            message = (
-                f"asyncpg cannot preserve plaintext fallback for ssl.mode {self.ssl.mode.value!r} "
-                "when ssl.cert and ssl.key require an SSLContext; use ssl.mode 'require' or the psycopg driver"
-            )
-            raise ValueError(message)
+        if self.driver is AsyncDriver.ASYNCPG and self.ssl.cert is not None and self.ssl.mode.allows_plaintext_fallback:
+            raise ValueError(plaintext_fallback_conflict(self.ssl.mode))
         return self
 
     @model_validator(mode="after")
@@ -558,7 +634,7 @@ class DBConfig(BaseModel):
         """
         if self.statement_timeout_ms is None:
             return self
-        client_ms = self.command_timeout_seconds * _MILLIS_PER_SECOND
+        client_ms = self.command_timeout_seconds * MILLIS_PER_SECOND
         if client_ms <= self.statement_timeout_ms:
             message = (
                 f"command_timeout_seconds ({self.command_timeout_seconds}) is {client_ms:.0f}ms, which does not "
@@ -667,17 +743,19 @@ class DBConfig(BaseModel):
         {'application_name': 'hypervigilant', 'search_path': 'public', 'idle_in_transaction_session_timeout': '60000'}
         """
         settings: dict[str, str] = {
-            "application_name": self.application_name,
-            "search_path": ",".join(self.search_path),
+            ServerSetting.APPLICATION_NAME.value: self.application_name,
+            ServerSetting.SEARCH_PATH.value: ",".join(self.search_path),
         }
         if self.read_only:
-            settings["default_transaction_read_only"] = "on"
+            settings[ServerSetting.DEFAULT_TRANSACTION_READ_ONLY.value] = _GUC_ENABLED
         if self.statement_timeout_ms is not None:
-            settings["statement_timeout"] = str(self.statement_timeout_ms)
+            settings[ServerSetting.STATEMENT_TIMEOUT.value] = str(self.statement_timeout_ms)
         if self.lock_timeout_ms is not None:
-            settings["lock_timeout"] = str(self.lock_timeout_ms)
+            settings[ServerSetting.LOCK_TIMEOUT.value] = str(self.lock_timeout_ms)
         if self.idle_in_transaction_session_timeout_ms is not None:
-            settings["idle_in_transaction_session_timeout"] = str(self.idle_in_transaction_session_timeout_ms)
+            settings[ServerSetting.IDLE_IN_TRANSACTION_SESSION_TIMEOUT.value] = str(
+                self.idle_in_transaction_session_timeout_ms
+            )
         return settings
 
     def reader_config(self) -> Self | None:

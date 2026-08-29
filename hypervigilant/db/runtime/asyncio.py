@@ -33,13 +33,12 @@ from dataclasses import dataclass
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
 
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ...loggers import get_logger
 from ..engine import build_engine, build_session_factory
 from ..errors import translate_error
-from ..health import PoolHealthProbe
+from ..health import PROBE_STATEMENT, PoolHealthProbe
 from ..operations import DatabaseOperation
 from ..session import asession_scope
 from ..transaction import aunit_of_work
@@ -57,7 +56,14 @@ __all__ = ["Database"]
 
 logger = get_logger(__name__)
 
-_STARTUP_PROBE = text("SELECT 1")
+
+def _not_initialized(missing: str) -> str:
+    """Return the message for a resource read before :meth:`Database.ainitialize`.
+
+    One sentence, one place. Three hand-written copies of it is three chances for the
+    method name in the remedy to stop matching the method a caller has to await.
+    """
+    return f"Database.ainitialize() has not been awaited; there is no {missing} yet."
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +85,7 @@ async def _build_and_probe(
     engine = build_engine(config)
     try:
         async with engine.connect() as connection:
-            await connection.execute(_STARTUP_PROBE)
+            await connection.execute(PROBE_STATEMENT)
         return _DatabaseResources(
             engine=engine,
             sessions=build_session_factory(engine),
@@ -161,7 +167,7 @@ class Database:
             check into every caller.
         """
         if self._writer is None:
-            reason = "Database.ainitialize() has not been awaited; there is no engine yet."
+            reason = _not_initialized("engine")
             raise RuntimeError(reason)
         return self._writer.engine
 
@@ -169,7 +175,7 @@ class Database:
     def health(self) -> HealthProbe:
         """The readiness probe bound to this engine."""
         if self._writer is None:
-            reason = "Database.ainitialize() has not been awaited; there is no health probe yet."
+            reason = _not_initialized("health probe")
             raise RuntimeError(reason)
         return self._writer.health
 
@@ -241,7 +247,7 @@ class Database:
 
     def _factory(self) -> SessionFactory:
         if self._writer is None:
-            reason = "Database.ainitialize() has not been awaited; there is no session factory yet."
+            reason = _not_initialized("session factory")
             raise RuntimeError(reason)
         return self._writer.sessions
 

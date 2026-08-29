@@ -95,6 +95,14 @@ __all__ = ["NAMING_CONVENTION", "PydanticJSON", "SessionFactory", "build_metadat
 type SessionFactory = async_sessionmaker[AsyncSession]
 """The callable a session is opened from. Named so consumers can spell it."""
 
+_POSTGRESQL_DIALECT: Final = "postgresql"
+"""SQLAlchemy's name for the PostgreSQL dialect, as ``Dialect.name`` reports it.
+
+The one value :meth:`PydanticJSON.load_dialect_impl` branches on. Spelled once, so a
+typo degrades to portable ``JSON`` everywhere rather than in whichever module got it
+wrong -- a failure that is invisible until somebody needs a GIN index.
+"""
+
 _IMPL: Final = types.JSON(none_as_null=True)
 """The cross-dialect storage type.
 
@@ -232,7 +240,7 @@ class PydanticJSON[ModelT](types.TypeDecorator[ModelT]):
         of that. Keeping a single type object -- rather than ``with_variant`` --
         keeps a single cache key.
         """
-        if dialect.name == "postgresql":
+        if dialect.name == _POSTGRESQL_DIALECT:
             return dialect.type_descriptor(postgresql.JSONB(none_as_null=True))
         return dialect.type_descriptor(_IMPL)
 
