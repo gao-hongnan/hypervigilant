@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
@@ -84,7 +85,7 @@ class TestNativeLoggingConfig:
 
 class TestJSONFormatter:
     def test_basic_format(self) -> None:
-        formatter = JSONFormatter(datefmt="%Y-%m-%d")
+        formatter = JSONFormatter()
         record = logging.LogRecord(
             name="test.logger",
             level=logging.INFO,
@@ -103,6 +104,43 @@ class TestJSONFormatter:
         assert data["lineno"] == 42
         assert data["message"] == "Test message"
         assert "timestamp" in data
+
+    def test_timestamp_is_utc_iso8601(self) -> None:
+        formatter = JSONFormatter()
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="Test",
+            args=(),
+            exc_info=None,
+        )
+        data = json.loads(formatter.format(record))
+        timestamp = data["timestamp"]
+
+        assert timestamp.endswith("Z")
+        assert "+00:00" not in timestamp
+        parsed = datetime.fromisoformat(timestamp)
+        assert parsed.tzinfo is UTC
+        assert parsed == datetime.fromtimestamp(record.created, tz=UTC)
+
+    def test_non_ascii_is_not_escaped(self) -> None:
+        formatter = JSONFormatter(indent=None)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="caf\u00e9 \u65e5\u672c\u8a9e",
+            args=(),
+            exc_info=None,
+        )
+        output = formatter.format(record)
+
+        assert "caf\u00e9 \u65e5\u672c\u8a9e" in output
+        assert "\\u00e9" not in output
+        assert json.loads(output)["message"] == "caf\u00e9 \u65e5\u672c\u8a9e"
 
     def test_message_with_args(self) -> None:
         formatter = JSONFormatter()

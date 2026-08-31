@@ -63,7 +63,7 @@ class JsonFormatterStrategy:
         return [
             *shared,
             structlog.processors.dict_tracebacks,
-            structlog.processors.JSONRenderer(indent=self._indent),
+            structlog.processors.JSONRenderer(indent=self._indent, ensure_ascii=False),
         ]
 
 
@@ -101,6 +101,7 @@ class StreamOutputStrategy:
 class LoggerFactory(BaseLoggerFactory[StructlogConfig, BoundLogger]):
     _handler: ClassVar[logging.Handler | None] = None
     _close_on_replace: ClassVar[bool] = False
+    _library_levels: ClassVar[dict[str, int]] = {}
 
     @classmethod
     def create(cls: type[Self], config: StructlogConfig) -> BoundLogger:

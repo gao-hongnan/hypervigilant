@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import ClassVar, Generic, Self, TypeVar
 
 from .core import LOG_LEVEL_MAP, LogLevel
-from .handlers import apply_library_log_levels, remove_handler_from_root
+from .handlers import apply_library_log_levels, remove_handler_from_root, restore_library_log_levels
 
 ConfigT = TypeVar("ConfigT")
 LoggerT = TypeVar("LoggerT")
@@ -15,6 +15,7 @@ LoggerT = TypeVar("LoggerT")
 class BaseLoggerFactory(ABC, Generic[ConfigT, LoggerT]):
     _handler: ClassVar[logging.Handler | None] = None
     _close_on_replace: ClassVar[bool] = True
+    _library_levels: ClassVar[dict[str, int]] = {}
 
     @classmethod
     @abstractmethod
@@ -30,12 +31,15 @@ class BaseLoggerFactory(ABC, Generic[ConfigT, LoggerT]):
     @classmethod
     def _finalize_root(cls: type[Self], level: LogLevel, library_log_levels: Mapping[str, LogLevel]) -> None:
         logging.getLogger().setLevel(LOG_LEVEL_MAP[level])
-        apply_library_log_levels(library_log_levels)
+        restore_library_log_levels(cls._library_levels)
+        cls._library_levels = apply_library_log_levels(library_log_levels)
 
     @classmethod
     def reset(cls: type[Self]) -> None:
         remove_handler_from_root(cls._handler, close=True)
         cls._handler = None
+        restore_library_log_levels(cls._library_levels)
+        cls._library_levels = {}
         cls._on_reset()
 
     @classmethod

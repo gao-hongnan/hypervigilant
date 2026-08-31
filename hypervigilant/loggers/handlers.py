@@ -37,9 +37,18 @@ def create_stream_handler(level: LogLevel) -> logging.StreamHandler[Any]:
     return handler
 
 
-def apply_library_log_levels(library_log_levels: Mapping[str, LogLevel]) -> None:
+def apply_library_log_levels(library_log_levels: Mapping[str, LogLevel]) -> dict[str, int]:
+    previous_levels: dict[str, int] = {}
     for lib_name, lib_level in library_log_levels.items():
-        logging.getLogger(lib_name).setLevel(LOG_LEVEL_MAP[lib_level])
+        lib_logger = logging.getLogger(lib_name)
+        previous_levels[lib_name] = lib_logger.level
+        lib_logger.setLevel(LOG_LEVEL_MAP[lib_level])
+    return previous_levels
+
+
+def restore_library_log_levels(previous_levels: Mapping[str, int]) -> None:
+    for lib_name, previous_level in previous_levels.items():
+        logging.getLogger(lib_name).setLevel(previous_level)
 
 
 def remove_handler_from_root(handler: logging.Handler | None, *, close: bool = True) -> None:

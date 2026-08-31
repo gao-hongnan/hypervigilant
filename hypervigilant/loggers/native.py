@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any, ClassVar, Final, Self
 
 from pydantic import Field
@@ -29,13 +30,17 @@ class NativeLoggingConfig(BaseLoggingConfig):
 
 
 class JSONFormatter(logging.Formatter):
-    def __init__(self, datefmt: str | None = None, indent: int | None = 4) -> None:
-        super().__init__(datefmt=datefmt)
+    def __init__(self, indent: int | None = 4) -> None:
+        super().__init__()
         self._indent = indent
+
+    @staticmethod
+    def _format_timestamp(created: float) -> str:
+        return datetime.fromtimestamp(created, tz=UTC).isoformat().replace("+00:00", "Z")
 
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict[str, Any] = {
-            "timestamp": self.formatTime(record, self.datefmt),
+            "timestamp": self._format_timestamp(record.created),
             "level": record.levelname,
             "logger": record.name,
             "filename": record.filename,
@@ -52,12 +57,13 @@ class JSONFormatter(logging.Formatter):
         }
         log_data.update(extras)
 
-        return json.dumps(log_data, default=str, indent=self._indent)
+        return json.dumps(log_data, default=str, indent=self._indent, ensure_ascii=False)
 
 
 class LoggerFactory(BaseLoggerFactory[NativeLoggingConfig, logging.Logger]):
     _handler: ClassVar[logging.Handler | None] = None
     _close_on_replace: ClassVar[bool] = True
+    _library_levels: ClassVar[dict[str, int]] = {}
 
     @classmethod
     def create(cls: type[Self], config: NativeLoggingConfig) -> logging.Logger:
@@ -73,7 +79,7 @@ class LoggerFactory(BaseLoggerFactory[NativeLoggingConfig, logging.Logger]):
             handler = create_stream_handler(config.level)
 
         if config.json_output:
-            handler.setFormatter(JSONFormatter(datefmt=config.date_format, indent=config.json_indent))
+            handler.setFormatter(JSONFormatter(indent=config.json_indent))
         else:
             handler.setFormatter(logging.Formatter(fmt=config.format, datefmt=config.date_format))
 
